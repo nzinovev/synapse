@@ -1,0 +1,167 @@
+{{ define "title" }}{{ .Task.ID }} — synapse{{ end }}
+
+{{ define "content" }}
+<div style="max-width:900px;margin:0 auto;padding:32px 48px 64px;display:flex;flex-direction:column;gap:16px">
+
+  {{/* Description card */}}
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">Description</h2>
+    </div>
+    <div class="card-body">
+      <p class="task-description">{{ .Task.Description }}</p>
+      <div class="meta-rows">
+        <div class="meta-row">
+          <span class="meta-label">Pipeline</span>
+          <span class="meta-value mono">{{ .Task.PipelineName }}</span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">Working dir</span>
+          <span class="meta-value mono wrap">{{ .WorkingDir }}</span>
+        </div>
+        <div class="meta-row">
+          <span class="meta-label">Created</span>
+          <span class="meta-value nowrap">{{ fmtTimeFull .Task.CreatedAt }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {{/* Pipeline card */}}
+  {{ template "stage_card.html" . }}
+
+  {{/* Artifacts card */}}
+  {{ template "artifacts_card.html" . }}
+
+  {{/* Stage history card */}}
+  {{ if .Task.Runs }}
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">Stage history ({{ len .Task.Runs }} runs)</h2>
+      <button class="history-toggle" id="history-toggle" onclick="toggleHistory()" aria-expanded="true">▲ collapse</button>
+    </div>
+    <div class="card-body" id="history-content">
+    {{ range $run := reverse .Task.Runs }}
+      <div class="run-card">
+        <div class="run-header">
+          <span class="run-stage">{{ $run.StageID }}</span>
+          <span class="run-attempt">attempt {{ $run.Attempt }}</span>
+          <span class="badge-type badge-type-{{ $run.Trigger }}">{{ $run.Trigger }}</span>
+          {{ if $run.AgentResult }}
+            {{ if $run.AgentResult.Success }}
+            <span class="badge badge-success"><span class="badge-dot"></span>success</span>
+            {{ else }}
+            <span class="badge badge-blocked"><span class="badge-dot"></span>failed</span>
+            {{ end }}
+          {{ else }}
+          <span class="badge badge-running"><span class="badge-dot"></span>in progress</span>
+          {{ end }}
+        </div>
+        {{ if $run.RejectionFeedback }}
+        <div class="run-feedback">
+          <strong>Feedback:</strong> {{ $run.RejectionFeedback }}
+        </div>
+        {{ end }}
+        {{ if $run.AgentResult }}
+        <div class="run-timing">
+          Duration: {{ fmtDuration $run.AgentResult.DurationSeconds }}s | Exit code: {{ derefInt $run.AgentResult.ExitCode }}
+        </div>
+        {{ end }}
+        {{ if $run.StartedAt }}
+        <div class="run-timing muted">
+          Started: {{ fmtTimeFull $run.StartedAt }}
+          {{ if $run.FinishedAt }}
+          | Finished: {{ fmtTimeFull $run.FinishedAt }}
+          {{ end }}
+        </div>
+        {{ end }}
+      </div>
+    {{ end }}
+    </div>
+  </div>
+  {{ end }}
+
+</div>
+
+{{/* Logs dialog */}}
+<dialog id="stage-logs-dialog">
+  <div id="stage-logs-content">
+  </div>
+</dialog>
+
+{{/* Artifact viewer dialog */}}
+<dialog id="artifact-viewer-dialog" onclick="if(event.target===this)this.close()">
+  <div id="artifact-viewer-content">
+  </div>
+</dialog>
+
+{{/* Reject dialog */}}
+{{ if eq .Task.Status "awaiting_gate" }}
+<dialog id="reject-dialog" onclick="if(event.target===this)this.close()">
+  <div class="dialog-inner">
+    <div class="dialog-header">
+      <h2>Reject with feedback</h2>
+      <button class="btn-icon-close" onclick="this.closest('dialog').close()" aria-label="Close">✕</button>
+    </div>
+    <form
+      hx-post="/tasks/{{ .Task.ID }}/reject"
+      hx-target="#stage-card"
+      hx-swap="outerHTML"
+      class="reject-form"
+      data-close-dialog="reject-dialog"
+    >
+      <label for="reject-feedback">Feedback</label>
+      <textarea id="reject-feedback" name="feedback" rows="4" placeholder="What needs to change?"></textarea>
+      <button type="submit" class="btn btn-reject">Reject with feedback</button>
+    </form>
+  </div>
+</dialog>
+
+<dialog id="answer-dialog" onclick="if(event.target===this)this.close()">
+  <div class="dialog-inner">
+    <div class="dialog-header">
+      <h2>Answer Questions</h2>
+      <button class="btn-icon-close" onclick="this.closest('dialog').close()" aria-label="Close">✕</button>
+    </div>
+    <form
+      hx-post="/tasks/{{ .Task.ID }}/answer"
+      hx-target="#stage-card"
+      hx-swap="outerHTML"
+      class="answer-form"
+      data-close-dialog="answer-dialog"
+    >
+      <label for="answer-feedback">Your answers</label>
+      <textarea id="answer-feedback" name="feedback" rows="4" placeholder="Provide answers to the open questions..." required></textarea>
+      <button type="submit" class="btn btn-answer">Answer and re-run</button>
+    </form>
+  </div>
+</dialog>
+{{ end }}
+
+<script>
+function toggleHistory() {
+  var content = document.getElementById('history-content');
+  var btn = document.getElementById('history-toggle');
+  if (content.style.display === 'none') {
+    content.style.display = '';
+    btn.textContent = '▲ collapse';
+    btn.setAttribute('aria-expanded', 'true');
+  } else {
+    content.style.display = 'none';
+    btn.textContent = '▼ expand';
+    btn.setAttribute('aria-expanded', 'false');
+  }
+}
+
+document.addEventListener('htmx:afterRequest', function(evt) {
+  var form = evt.detail.elt;
+  if (form && form.hasAttribute('data-close-dialog')) {
+    if (evt.detail.successful) {
+      var dialogId = form.getAttribute('data-close-dialog');
+      var dialog = document.getElementById(dialogId);
+      if (dialog) dialog.close();
+    }
+  }
+});
+</script>
+{{ end }}

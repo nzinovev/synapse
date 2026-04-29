@@ -1,0 +1,15 @@
+{{ define "artifact_modal.html" }}
+<div class="artifact-modal-header">
+  <span class="artifact-modal-filename">{{ .Filename }}</span>
+  <button
+    class="btn-icon-close"
+    onclick="this.closest('dialog').close()"
+    aria-label="Close"
+  >✕</button>
+</div>
+{{ if .IsMarkdown }}
+<div class="artifact-modal-content artifact-modal-markdown">{{ .ContentHTML }}</div>
+{{ else }}
+<div class="artifact-modal-content">{{ .Content }}</div>
+{{ end }}
+{{ end }}

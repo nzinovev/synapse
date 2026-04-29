@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ block "title" . }}synapse{{ end }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/htmx.min.js"></script>
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <a href="/" class="site-name">synapse</a>
+      {{ if .BreadcrumbRepo }}
+      <span class="breadcrumb-sep">/</span>
+      <a href="/{{ .BreadcrumbRepoURL }}" class="breadcrumb-repo">{{ .BreadcrumbRepo }}</a>
+      {{ end }}
+      {{ if .BreadcrumbTaskID }}
+      <span class="breadcrumb-sep">/</span>
+      <span class="breadcrumb-task-id">{{ truncate .BreadcrumbTaskID 40 }}</span>
+      {{ end }}
+    </div>
+    <span class="site-tagline">pipeline synapseestrator</span>
+  </header>
+  <main>
+    {{ block "content" . }}{{ end }}
+  </main>
+</body>
+</html>

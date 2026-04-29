@@ -1,0 +1,35 @@
+{{ define "browse.html" }}
+<div class="browse-current-path" id="browse-current-path">{{ .Path }}</div>
+<div class="browse-nav">
+  {{ if not .AtRoot }}
+  <button
+    type="button"
+    class="browse-up-btn"
+    hx-get="/api/browse?path={{ urlq .Parent }}"
+    hx-target="#browse-content"
+    hx-swap="innerHTML"
+  >← Parent</button>
+  {{ end }}
+</div>
+<div class="browse-dir-list">
+  {{ range .Dirs }}
+  <button
+    type="button"
+    class="browse-dir-item"
+    hx-get="/api/browse?path={{ urlq .Path }}"
+    hx-target="#browse-content"
+    hx-swap="innerHTML"
+  >{{ .Name }}</button>
+  {{ end }}
+  {{ if not .Dirs }}
+  <div class="browse-empty">No subdirectories</div>
+  {{ end }}
+</div>
+<div class="browse-select-row">
+  <button
+    type="button"
+    class="btn-primary"
+    onclick="synapseSelectFolder(document.getElementById('browse-current-path').textContent.trim())"
+  >Select this folder</button>
+</div>
+{{ end }}

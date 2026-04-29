@@ -1,0 +1,241 @@
+{{ define "title" }}{{ .RepoName }} — synapse{{ end }}
+
+{{ define "content" }}
+<div style="max-width:960px;margin:0 auto;padding:40px 48px 64px">
+
+<a href="/" class="tasks-back-link">&larr; Projects</a>
+
+<div class="page-header">
+  <h1 class="tasks-header">{{ .RepoName }}</h1>
+  <div class="page-header-actions">
+    <button class="btn-primary" onclick="document.getElementById('new-task-dialog').showModal()">+ New Task</button>
+  </div>
+</div>
+
+{{ if .Tasks }}
+<div class="tasks-filters">
+  <input type="text" id="task-filter" class="tasks-filter-input" placeholder="Filter by ID or stage..." aria-label="Filter tasks">
+
+  <div class="status-tabs" id="status-tabs">
+    <button class="status-tab active" data-status="ALL">ALL</button>
+    {{ range .UniqueStatuses }}
+    <button class="status-tab" data-status="{{ . }}">{{ . }}</button>
+    {{ end }}
+  </div>
+
+  <span class="tasks-count" id="tasks-count">{{ len .Tasks }} tasks</span>
+</div>
+
+<div class="card">
+  <table class="task-table">
+    <thead>
+      <tr>
+        <th>Task ID</th>
+        <th>Pipeline</th>
+        <th>Stage</th>
+        <th>Status</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody id="task-tbody">
+    {{ range .Tasks }}
+      <tr data-id="{{ .ID }}" data-stage="{{ .CurrentStageID }}" data-status="{{ .Status }}" onclick="window.location='/tasks/{{ .ID }}'" tabindex="0" onkeydown="if(event.key==='Enter')window.location='/tasks/{{ .ID }}'">
+        <td><a href="/tasks/{{ .ID }}" class="task-link" onclick="event.preventDefault()">{{ .ID }}</a></td>
+        <td style="color:var(--muted2);font-size:13px">{{ .PipelineName }}</td>
+        <td><code>{{ .CurrentStageID }}</code></td>
+        <td><span class="badge badge-{{ .Status }}">{{ .Status }}</span></td>
+        <td class="muted" style="font-size:12px;white-space:nowrap">{{ fmtTime .CreatedAt }}</td>
+      </tr>
+    {{ end }}
+    </tbody>
+  </table>
+</div>
+
+<div id="filter-empty-tasks" class="filter-empty">No tasks match your filters.</div>
+
+<div class="pagination" id="pagination"></div>
+
+{{ else }}
+<div class="empty-state">
+  <p>No tasks in this repo yet.</p>
+</div>
+{{ end }}
+
+</div>
+
+<dialog id="new-task-dialog">
+  <form
+    hx-post="/tasks"
+    hx-target="#task-form-error"
+    hx-swap="innerHTML"
+  >
+    <h2>New Task</h2>
+
+    <div id="task-form-error"></div>
+
+    <label for="pipeline_name">Pipeline</label>
+    <select id="pipeline_name" name="pipeline_name" required>
+      <option value="" disabled selected>Select a pipeline</option>
+      {{ range .Pipelines }}
+        <option value="{{ .Name }}">{{ .Name }}</option>
+      {{ end }}
+    </select>
+
+    <label for="task_number">Task Number</label>
+    <input
+      id="task_number"
+      name="task_number"
+      type="text"
+      required
+      placeholder="e.g. JIRA-123"
+    />
+
+    <label for="description">Description</label>
+    <textarea id="description" name="description" rows="6" required placeholder="Describe what you want the pipeline to accomplish..."></textarea>
+
+    <label for="adapter">Adapter</label>
+    <select id="adapter" name="adapter">
+      <option value="">Default ({{ .DefaultAdapter }})</option>
+      {{ range .AdapterNames }}
+        <option value="{{ . }}">{{ . }}</option>
+      {{ end }}
+    </select>
+
+    <label for="working_dir_display">Project Directory</label>
+    <input type="hidden" id="working_dir" name="working_dir" value="{{ .RepoDir }}" />
+    <div class="dir-picker-group">
+      <input
+        id="working_dir_display"
+        type="text"
+        value="{{ .RepoDir }}"
+        readonly
+        placeholder="Click Browse to select a folder"
+        onclick="openFolderPicker()"
+      />
+      <button type="button" class="dir-picker-btn" onclick="openFolderPicker()">Browse…</button>
+    </div>
+
+    <div class="form-actions">
+      <button type="button" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn-primary">Create Task</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="folder-picker-dialog">
+  <div class="folder-picker-header">
+    <span class="folder-picker-title">Choose a folder</span>
+    <button type="button" class="btn-icon-close" onclick="document.getElementById('folder-picker-dialog').close()">&#10005;</button>
+  </div>
+  <div id="browse-content">
+    <div class="browse-loading">Loading…</div>
+  </div>
+</dialog>
+
+<script>
+function openFolderPicker() {
+  var current = document.getElementById('working_dir').value || '';
+  var url = '/api/browse' + (current ? '?path=' + encodeURIComponent(current) : '');
+  htmx.ajax('GET', url, {target: '#browse-content', swap: 'innerHTML'});
+  document.getElementById('folder-picker-dialog').showModal();
+}
+function synapseSelectFolder(path) {
+  document.getElementById('working_dir').value = path;
+  document.getElementById('working_dir_display').value = path;
+  document.getElementById('folder-picker-dialog').close();
+}
+
+(function() {
+  var PAGE_SIZE = 5;
+  var currentPage = 0;
+  var currentStatus = 'ALL';
+  var currentSearch = '';
+
+  function getFilteredRows() {
+    var rows = document.querySelectorAll('#task-tbody tr');
+    var filtered = [];
+    rows.forEach(function(row) {
+      var id = (row.getAttribute('data-id') || '').toLowerCase();
+      var stage = (row.getAttribute('data-stage') || '').toLowerCase();
+      var status = row.getAttribute('data-status') || '';
+      var matchStatus = currentStatus === 'ALL' || status === currentStatus;
+      var matchSearch = !currentSearch || id.indexOf(currentSearch) !== -1 || stage.indexOf(currentSearch) !== -1;
+      if (matchStatus && matchSearch) {
+        filtered.push(row);
+      }
+    });
+    return filtered;
+  }
+
+  function render() {
+    var rows = document.querySelectorAll('#task-tbody tr');
+    var filtered = getFilteredRows();
+    var totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    if (currentPage >= totalPages) currentPage = totalPages - 1;
+    if (currentPage < 0) currentPage = 0;
+
+    rows.forEach(function(row) { row.style.display = 'none'; });
+    var start = currentPage * PAGE_SIZE;
+    for (var i = start; i < Math.min(start + PAGE_SIZE, filtered.length); i++) {
+      filtered[i].style.display = '';
+    }
+
+    var countEl = document.getElementById('tasks-count');
+    if (countEl) countEl.textContent = filtered.length + ' tasks';
+
+    var emptyEl = document.getElementById('filter-empty-tasks');
+    if (emptyEl) {
+      emptyEl.style.display = filtered.length === 0 && rows.length > 0 ? 'block' : 'none';
+    }
+
+    renderPagination(totalPages);
+  }
+
+  function renderPagination(totalPages) {
+    var container = document.getElementById('pagination');
+    if (!container) return;
+    if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+    var html = '';
+    html += '<button class="pag-btn' + (currentPage === 0 ? ' disabled' : '') + '" data-page="prev">&larr;</button>';
+    for (var p = 0; p < totalPages; p++) {
+      html += '<button class="pag-btn' + (p === currentPage ? ' active' : '') + '" data-page="' + p + '">' + (p + 1) + '</button>';
+    }
+    html += '<button class="pag-btn' + (currentPage >= totalPages - 1 ? ' disabled' : '') + '" data-page="next">&rarr;</button>';
+    container.innerHTML = html;
+  }
+
+  document.getElementById('pagination') && document.getElementById('pagination').addEventListener('click', function(e) {
+    var btn = e.target.closest('.pag-btn');
+    if (!btn || btn.classList.contains('disabled')) return;
+    var page = btn.getAttribute('data-page');
+    if (page === 'prev') currentPage--;
+    else if (page === 'next') currentPage++;
+    else currentPage = parseInt(page);
+    render();
+  });
+
+  document.getElementById('status-tabs') && document.getElementById('status-tabs').addEventListener('click', function(e) {
+    var tab = e.target.closest('.status-tab');
+    if (!tab) return;
+    document.querySelectorAll('.status-tab').forEach(function(t) { t.classList.remove('active'); });
+    tab.classList.add('active');
+    currentStatus = tab.getAttribute('data-status');
+    currentPage = 0;
+    render();
+  });
+
+  var searchTimer = null;
+  document.getElementById('task-filter') && document.getElementById('task-filter').addEventListener('input', function(e) {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function() {
+      currentSearch = e.target.value.toLowerCase();
+      currentPage = 0;
+      render();
+    }, 120);
+  });
+
+  render();
+})();
+</script>
+{{ end }}

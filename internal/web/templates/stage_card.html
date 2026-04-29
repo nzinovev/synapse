@@ -1,0 +1,190 @@
+{{ define "stage_card.html" }}
+{{/* Stage card fragment — swapped by HTMX on approve/reject and auto-refresh. */}}
+<div
+  id="stage-card"
+  {{ if eq .Task.Status "running" }}
+  hx-get="/tasks/{{ .Task.ID }}/stage-card"
+  hx-trigger="every 3s"
+  hx-swap="outerHTML"
+  {{ end }}
+>
+
+{{/* Pipeline Visualizer */}}
+{{ if .Pipeline }}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-header">
+    <h2 class="card-title">Pipeline: {{ .Pipeline.Name }}</h2>
+  </div>
+  <div class="card-body no-pad">
+    <div class="pipeline-viz">
+      <div class="pipeline-track-wrap">
+        <div class="pipeline-track"></div>
+        <div class="pipeline-progress" style="width:{{ pipelineProgress .Pipeline.Stages .Task.CurrentStageID }}%"></div>
+        <div class="pipeline-nodes">
+        {{ range $i, $stage := .Pipeline.Stages }}
+          {{ $isCurrent := eq .ID $.Task.CurrentStageID }}
+          {{ $stageRuns := stageRunsFor $.Task.Runs .ID }}
+          {{ $hasRuns := gt (len $stageRuns) 0 }}
+
+          {{/* Determine node state */}}
+          {{ $nodeState := "future" }}
+          {{ if and (eq $.Task.Status "done") (not $isCurrent) }}
+            {{ $nodeState = "done" }}
+          {{ else if $isCurrent }}
+            {{ if eq $.Task.Status "running" }}
+              {{ $nodeState = "active" }}
+            {{ else if eq $.Task.Status "awaiting_gate" }}
+              {{ $nodeState = "active" }}
+            {{ else if eq $.Task.Status "blocked" }}
+              {{ $nodeState = "active" }}
+            {{ else if eq $.Task.Status "escalated" }}
+              {{ $nodeState = "active" }}
+            {{ else if eq $.Task.Status "cancelled" }}
+              {{ $nodeState = "active" }}
+            {{ else if eq $.Task.Status "done" }}
+              {{ $nodeState = "done" }}
+            {{ else }}
+              {{ $nodeState = "active" }}
+            {{ end }}
+          {{ else if $hasRuns }}
+            {{ $nodeState = "done" }}
+          {{ end }}
+
+          <div class="pipeline-node-wrap">
+            <div
+              class="pipeline-node {{ $nodeState }}{{ if $hasRuns }} clickable{{ end }}"
+              {{ if $hasRuns }}
+              role="button"
+              tabindex="0"
+              hx-get="/tasks/{{ $.Task.ID }}/stage-logs/{{ .ID }}"
+              hx-target="#stage-logs-content"
+              hx-swap="innerHTML"
+              hx-on::after-request="document.getElementById('stage-logs-dialog').showModal()"
+              title="View logs for {{ .ID }}"
+              {{ else }}
+              aria-disabled="true"
+              {{ end }}
+            >
+              {{ if eq $nodeState "done" }}
+              <svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4.5L4 7.5L10 1.5" stroke="#0b0d13" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              {{ else if eq $nodeState "active" }}
+              <div style="width:8px;height:8px;border-radius:50%;background:#fff;opacity:0.9"></div>
+              {{ end }}
+            </div>
+            <div class="pipeline-label">
+              <div
+                class="pipeline-label-name {{ $nodeState }}{{ if $hasRuns }} clickable{{ end }}"
+                {{ if $hasRuns }}
+                hx-get="/tasks/{{ $.Task.ID }}/stage-logs/{{ .ID }}"
+                hx-target="#stage-logs-content"
+                hx-swap="innerHTML"
+                hx-on::after-request="document.getElementById('stage-logs-dialog').showModal()"
+                {{ end }}
+              >{{ .ID }}</div>
+              {{ if .Agent }}
+              <div class="pipeline-label-agent">{{ .Agent }}</div>
+              {{ end }}
+            </div>
+          </div>
+        {{ end }}
+        </div>
+      </div>
+    </div>
+    <div class="pipeline-footer">
+      <span class="badge badge-{{ .Task.Status }}">{{ .Task.Status }}</span>
+      {{ if eq .Task.Status "done" }}
+      <span class="current-stage-label">Current stage: <span class="current-stage-name">{{ .Task.CurrentStageID }}</span></span>
+      <span class="all-complete">All stages complete.</span>
+      {{ else }}
+      <span class="current-stage-label">Current stage: <span class="current-stage-name">{{ .Task.CurrentStageID }}</span></span>
+      {{ end }}
+    </div>
+  </div>
+</div>
+{{ end }}
+
+{{/* Gate controls — preserved from original, updated styling */}}
+{{ if eq .Task.Status "awaiting_gate" }}
+<section class="gate-controls">
+  <h3>Gate: awaiting your decision</h3>
+  <div class="gate-buttons">
+    <form
+      hx-post="/tasks/{{ .Task.ID }}/approve"
+      hx-target="#stage-card"
+      hx-swap="outerHTML"
+    >
+      <label for="approve-adapter" class="adapter-label">Adapter for next stage</label>
+      <select id="approve-adapter" name="adapter" class="adapter-select">
+        <option value="">Current ({{ if .Task.Adapter }}{{ .Task.Adapter }}{{ else }}{{ .DefaultAdapter }}{{ end }})</option>
+        {{ range .AdapterNames }}
+          <option value="{{ . }}" {{ if eq . $.Task.Adapter }}selected{{ end }}>{{ . }}</option>
+        {{ end }}
+      </select>
+      <button type="submit" class="btn btn-approve">Approve</button>
+    </form>
+
+    <button type="button" class="btn btn-reject-toggle" onclick="document.getElementById('reject-dialog').showModal()">Reject</button>
+
+    {{ if or (eq .Task.Status "awaiting_gate") (eq .CurrentGate "auto_if_clean") (eq .CurrentGate "human_approval") }}
+    <button type="button" class="btn btn-answer-toggle" onclick="document.getElementById('answer-dialog').showModal()">Answer Questions</button>
+    {{ end }}
+
+    <form
+      hx-post="/tasks/{{ .Task.ID }}/cancel"
+      hx-target="#stage-card"
+      hx-swap="outerHTML"
+    >
+      <button type="submit" class="btn btn-cancel">Cancel</button>
+    </form>
+  </div>
+</section>
+{{ else if eq .Task.Status "running" }}
+<section class="gate-controls">
+  <p class="muted running-indicator">Agent is running — dashboard refreshes automatically.</p>
+</section>
+{{ else if eq .Task.Status "blocked" }}
+<section class="gate-controls">
+  <p class="blocked-msg">Stage failed.</p>
+  <div class="gate-buttons">
+    <form
+      hx-post="/tasks/{{ .Task.ID }}/retry"
+      hx-target="#stage-card"
+      hx-swap="outerHTML"
+    >
+      <label for="retry-adapter" class="adapter-label">Adapter for next attempt</label>
+      <select id="retry-adapter" name="adapter" class="adapter-select">
+        <option value="">Current ({{ if .Task.Adapter }}{{ .Task.Adapter }}{{ else }}{{ .DefaultAdapter }}{{ end }})</option>
+        {{ range .AdapterNames }}
+          <option value="{{ . }}" {{ if eq . $.Task.Adapter }}selected{{ end }}>{{ . }}</option>
+        {{ end }}
+      </select>
+      <button type="submit" class="btn btn-retry">Retry</button>
+    </form>
+  </div>
+  <p class="muted" style="margin-top:8px">Or use <code>synapse retry {{ .Task.ID }}</code> in the CLI.</p>
+</section>
+{{ else if eq .Task.Status "escalated" }}
+<section class="gate-controls">
+  <p style="color:var(--orange)">Max fix cycles reached — human intervention required.</p>
+  <div class="gate-buttons">
+    <form
+      hx-post="/tasks/{{ .Task.ID }}/retry"
+      hx-target="#stage-card"
+      hx-swap="outerHTML"
+    >
+      <label for="retry-adapter" class="adapter-label">Adapter for next attempt</label>
+      <select id="retry-adapter" name="adapter" class="adapter-select">
+        <option value="">Current ({{ if .Task.Adapter }}{{ .Task.Adapter }}{{ else }}{{ .DefaultAdapter }}{{ end }})</option>
+        {{ range .AdapterNames }}
+          <option value="{{ . }}" {{ if eq . $.Task.Adapter }}selected{{ end }}>{{ . }}</option>
+        {{ end }}
+      </select>
+      <button type="submit" class="btn btn-retry">Retry</button>
+    </form>
+  </div>
+  <p class="muted" style="margin-top:8px">Or use <code>synapse retry {{ .Task.ID }}</code> to reset and retry.</p>
+</section>
+{{ end }}
+
+</div>
+{{ end }}

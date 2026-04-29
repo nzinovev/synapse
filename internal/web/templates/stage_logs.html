@@ -1,0 +1,64 @@
+{{/* Fragment — swapped into #stage-logs-content by HTMX. */}}
+<div class="stage-logs-header">
+  <h2>
+    Logs
+    <span class="sep">—</span>
+    <span class="stage-name">{{ .StageID }}</span>
+    <span class="attempt-count">· {{ len .Attempts }} attempt{{ if ne (len .Attempts) 1 }}s{{ end }}</span>
+  </h2>
+  <button
+    class="btn-icon-close"
+    onclick="this.closest('dialog').close()"
+    aria-label="Close"
+  >✕</button>
+</div>
+<div class="stage-logs-body">
+  {{ if not .Attempts }}
+  <div class="log-empty-runs">No runs recorded for this stage yet.</div>
+  {{ end }}
+  {{ range .Attempts }}
+  <div class="attempt-card">
+    <div class="attempt-header">
+      <span class="attempt-number">Attempt {{ .Attempt }}</span>
+      <span class="badge-type badge-type-{{ .Trigger }}">{{ .Trigger }}</span>
+      <span style="display:flex;align-items:center;gap:5px">
+        {{ if .ExitCode }}
+          {{ if eq (derefInt .ExitCode) "0" }}
+          <span class="attempt-status-dot success"></span>
+          <span class="attempt-status-text success">SUCCESS</span>
+          {{ else }}
+          <span class="attempt-status-dot failed"></span>
+          <span class="attempt-status-text failed">FAILED</span>
+          {{ end }}
+        {{ else }}
+        <span class="attempt-status-dot running"></span>
+        <span class="attempt-status-text in-progress">RUNNING</span>
+        {{ end }}
+      </span>
+      <span class="attempt-meta">exit {{ derefInt .ExitCode }}</span>
+      <span class="attempt-meta">{{ if .Duration }}{{ fmtDuration .Duration }}s{{ end }}</span>
+      {{ if .StartedAt }}
+      <span class="attempt-meta" style="margin-left:auto">{{ fmtTimeFull .StartedAt }}</span>
+      {{ end }}
+    </div>
+
+    <div class="log-pane">
+      <div class="log-pane-label">stdout</div>
+      {{ if .Stdout }}
+        <pre class="log-content">{{ .Stdout }}</pre>
+      {{ else }}
+        <div class="log-empty">No stdout output.</div>
+      {{ end }}
+    </div>
+
+    <div class="log-pane" style="border-top:1px solid var(--border)">
+      <div class="log-pane-label" {{ if not .Stderr }}style="border-bottom:none"{{ end }}>stderr</div>
+      {{ if .Stderr }}
+        <pre class="log-content stderr-content">{{ .Stderr }}</pre>
+      {{ else }}
+        <div class="log-empty-stderr">No stderr output.</div>
+      {{ end }}
+    </div>
+  </div>
+  {{ end }}
+</div>

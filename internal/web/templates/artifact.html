@@ -1,0 +1,10 @@
+{{ define "title" }}{{ .Filename }} — synapse{{ end }}
+
+{{ define "content" }}
+<div class="page-header">
+  <a href="/tasks/{{ .TaskID }}" class="back-link">Back to task</a>
+  <h1>{{ .Filename }}</h1>
+</div>
+<p class="muted artifact-full-path"><code>{{ .Path }}</code></p>
+<pre class="artifact-content"><code>{{ .Content }}</code></pre>
+{{ end }}

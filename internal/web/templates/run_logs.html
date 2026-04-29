@@ -1,0 +1,18 @@
+{{ define "title" }}{{ .StageID }} attempt {{ .Attempt }} — synapse{{ end }}
+
+{{ define "content" }}
+<div class="page-header">
+  <a href="/tasks/{{ .TaskID }}" class="back-link">Back to task</a>
+  <h1><code>{{ .StageID }}</code> — attempt {{ .Attempt }}</h1>
+</div>
+
+<div class="log-breadcrumb">
+  <span class="muted">Task:</span> <a href="/tasks/{{ .TaskID }}">{{ .TaskID }}</a>
+  <span class="muted" style="margin: 0 6px">/</span>
+  <span class="muted">Stage:</span> <code>{{ .StageID }}</code>
+  <span class="muted" style="margin: 0 6px">/</span>
+  <span class="muted">Attempt:</span> {{ .Attempt }}
+</div>
+
+<pre class="log-content"><code>{{ .Content }}</code></pre>
+{{ end }}

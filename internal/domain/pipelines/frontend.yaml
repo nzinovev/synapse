@@ -1,0 +1,9 @@
+name: frontend
+stages:
+  - { id: spec,      agent: spec-writer,         gate: auto_if_clean,       produces_glob: "docs/specs/*.md",      model: low }
+  - { id: ui,        agent: ui-designer,         gate: auto_if_clean,       produces_glob: "docs/ui-specs/*.md",   model: medium }
+  - { id: adr,       agent: adr-architect,       gate: human_approval,      produces_glob: "docs/adr/*.md",        model: medium }
+  - { id: implement, agent: feature-implementer, gate: auto,                produces_glob: "docs/handoff/*.md",    model: medium }
+  - { id: review,    agent: spec-reviewer,       gate: auto_on_approval,    produces_glob: "docs/reviews/*.md",    model: low }
+  - { id: fix,       agent: fix-implementer,     gate: auto,                produces_glob: "docs/handoff/*.md",    model: medium }
+  - { id: done,      agent: null,                gate: human_final,         produces_glob: "" }

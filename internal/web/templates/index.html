@@ -1,0 +1,197 @@
+{{ define "title" }}Projects — synapse{{ end }}
+
+{{ define "content" }}
+<div class="page-header">
+  <h1>Projects</h1>
+  <div class="page-header-actions">
+    <button class="btn-primary" onclick="document.getElementById('new-task-dialog').showModal()">+ New Task</button>
+    <input type="text" id="project-filter" class="task-filter" placeholder="Filter projects..." aria-label="Filter projects">
+  </div>
+</div>
+
+<div
+  id="projects-content"
+  hx-get="/"
+  hx-trigger="every 3s"
+  hx-select="#projects-content"
+  hx-swap="outerHTML"
+>
+{{ if .GroupedTasks }}
+<div class="projects-grid">
+{{ range $dir, $tasks := .GroupedTasks }}
+  <a href="/{{ urlq $dir }}" class="project-card-item" data-repo="{{ lastSegment $dir }}">
+    <div class="project-card-header">
+      <span class="project-card-name">{{ lastSegment $dir }}</span>
+      <span class="project-card-arrow">&rarr;</span>
+    </div>
+    <div class="project-card-stats">
+      <span class="stat-pill stat-pill-neutral">
+        <span class="stat-pill-value">{{ len $tasks }}</span>
+        <span class="stat-pill-label">total</span>
+      </span>
+      {{ $running := countByStatus $tasks "running" }}
+      {{ if gt $running 0 }}
+      <span class="stat-pill stat-pill-blue">
+        <span class="stat-pill-value">{{ $running }}</span>
+        <span class="stat-pill-label">running</span>
+      </span>
+      {{ end }}
+      {{ $done := countByStatus $tasks "done" }}
+      {{ if gt $done 0 }}
+      <span class="stat-pill stat-pill-green">
+        <span class="stat-pill-value">{{ $done }}</span>
+        <span class="stat-pill-label">done</span>
+      </span>
+      {{ end }}
+      {{ $failed := countFailed $tasks }}
+      {{ if gt $failed 0 }}
+      <span class="stat-pill stat-pill-red">
+        <span class="stat-pill-value">{{ $failed }}</span>
+        <span class="stat-pill-label">failed</span>
+      </span>
+      {{ end }}
+    </div>
+    <div class="project-card-latest">
+      <span class="project-card-latest-label">Latest</span>
+      <span class="project-card-latest-id">{{ (index $tasks 0).ID }}</span>
+      <span class="badge badge-{{ (index $tasks 0).Status }}">{{ (index $tasks 0).Status }}</span>
+    </div>
+  </a>
+{{ end }}
+</div>
+<div id="projects-filter-empty" class="projects-filter-empty">No projects match "<span id="filter-query"></span>"</div>
+{{ else }}
+<div class="empty-state">
+  <p>No tasks yet.</p>
+  <p class="muted">Create a new task to get started, or run <code>synapse run &lt;pipeline&gt; "&lt;description&gt;"</code> from the CLI.</p>
+</div>
+{{ end }}
+</div>
+
+<dialog id="new-task-dialog">
+  <form
+    hx-post="/tasks"
+    hx-target="#task-form-error"
+    hx-swap="innerHTML"
+  >
+    <h2>New Task</h2>
+
+    <div id="task-form-error"></div>
+
+    <label for="pipeline_name">Pipeline</label>
+    <select id="pipeline_name" name="pipeline_name" required>
+      <option value="" disabled selected>Select a pipeline</option>
+      {{ range .Pipelines }}
+        <option value="{{ .Name }}">{{ .Name }}</option>
+      {{ end }}
+    </select>
+
+    <label for="task_number">Task Number</label>
+    <input
+      id="task_number"
+      name="task_number"
+      type="text"
+      required
+      placeholder="e.g. JIRA-123"
+    />
+
+    <label for="description">Description</label>
+    <textarea id="description" name="description" rows="6" required placeholder="Describe what you want the pipeline to accomplish..."></textarea>
+
+    <label for="adapter">Adapter</label>
+    <select id="adapter" name="adapter">
+      <option value="">Default ({{ .DefaultAdapter }})</option>
+      {{ range .AdapterNames }}
+        <option value="{{ . }}">{{ . }}</option>
+      {{ end }}
+    </select>
+
+    <label for="working_dir_display">Project Directory</label>
+    <input type="hidden" id="working_dir" name="working_dir" value="{{ .DefaultProjectDir }}" />
+    <div class="dir-picker-group">
+      <input
+        id="working_dir_display"
+        type="text"
+        value="{{ .DefaultProjectDir }}"
+        readonly
+        placeholder="Click Browse to select a folder"
+        onclick="openFolderPicker()"
+      />
+      <button type="button" class="dir-picker-btn" onclick="openFolderPicker()">Browse…</button>
+    </div>
+
+    <div class="form-actions">
+      <button type="button" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn-primary">Create Task</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="folder-picker-dialog">
+  <div class="folder-picker-header">
+    <span class="folder-picker-title">Choose a folder</span>
+    <button type="button" class="btn-icon-close" onclick="document.getElementById('folder-picker-dialog').close()">&#10005;</button>
+  </div>
+  <div id="browse-content">
+    <div class="browse-loading">Loading…</div>
+  </div>
+</dialog>
+
+<script>
+function openFolderPicker() {
+  var current = document.getElementById('working_dir').value || '';
+  var url = '/api/browse' + (current ? '?path=' + encodeURIComponent(current) : '');
+  htmx.ajax('GET', url, {target: '#browse-content', swap: 'innerHTML'});
+  document.getElementById('folder-picker-dialog').showModal();
+}
+function synapseSelectFolder(path) {
+  document.getElementById('working_dir').value = path;
+  document.getElementById('working_dir_display').value = path;
+  document.getElementById('folder-picker-dialog').close();
+}
+
+(function() {
+  var debounceTimer = null;
+  function applyFilter() {
+    var filter = document.getElementById('project-filter');
+    var empty = document.getElementById('projects-filter-empty');
+    var queryEl = document.getElementById('filter-query');
+    if (!filter) return;
+    var q = filter.value.toLowerCase();
+    var cards = document.querySelectorAll('.project-card-item');
+    var totalVisible = 0;
+    cards.forEach(function(card) {
+      var repo = card.getAttribute('data-repo') || '';
+      var match = !q || repo.toLowerCase().indexOf(q) !== -1;
+      card.style.display = match ? '' : 'none';
+      if (match) totalVisible++;
+    });
+    if (empty) {
+      if (q && totalVisible === 0 && cards.length > 0) {
+        empty.style.display = 'block';
+        if (queryEl) queryEl.textContent = filter.value;
+      } else {
+        empty.style.display = 'none';
+      }
+    }
+  }
+  function debouncedFilter() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(applyFilter, 120);
+  }
+  function initFilter() {
+    var filter = document.getElementById('project-filter');
+    if (!filter) return;
+    filter.removeEventListener('input', debouncedFilter);
+    filter.addEventListener('input', debouncedFilter);
+    applyFilter();
+  }
+  initFilter();
+  document.addEventListener('htmx:afterSwap', function(e) {
+    if (e.detail.target && e.detail.target.id === 'projects-content') {
+      initFilter();
+    }
+  });
+})();
+</script>
+{{ end }}

@@ -1,0 +1,42 @@
+{{ define "title" }}New Task — synapse{{ end }}
+
+{{ define "content" }}
+<div class="page-header">
+  <h1>New Task</h1>
+</div>
+
+<div class="new-task-form-card">
+  {{ if .Error }}
+  <p class="form-error">{{ .Error }}</p>
+  {{ end }}
+
+  <form method="post" action="/tasks/new">
+    <label for="pipeline">Pipeline</label>
+    <select id="pipeline" name="pipeline" required>
+      {{ range .Pipelines }}
+      <option value="{{ .Name }}">{{ .Name }} ({{ len .Stages }} stages)</option>
+      {{ end }}
+    </select>
+
+    <label for="task_number">Task Number</label>
+    <input
+      type="text"
+      id="task_number"
+      name="task_number"
+      required
+      placeholder="e.g. JIRA-123"
+    />
+
+    <label for="description">Description</label>
+    <textarea id="description" name="description" rows="6" required placeholder="Describe the task to be executed by the pipeline agents..."></textarea>
+
+    <label for="working_dir">Working directory</label>
+    <input type="text" id="working_dir" name="working_dir" value="{{ .WorkingDir }}" required>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Create &amp; Run</button>
+      <a href="/" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{{ end }}

@@ -1,0 +1,39 @@
+{{ define "artifacts_card.html" }}
+<div
+  id="artifacts-card"
+  {{ if or (eq .Task.Status "running") (eq .Task.Status "awaiting_gate") }}
+  hx-get="/tasks/{{ .Task.ID }}/artifacts-card"
+  hx-trigger="every 3s"
+  hx-swap="outerHTML"
+  {{ end }}
+>
+{{ if .Task.Artifacts }}
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Artifacts</h2>
+  </div>
+  <div class="card-body">
+  {{ range $stageID, $paths := .Task.Artifacts }}
+    {{ if $paths }}
+    <div class="artifact-group">
+      <div class="artifact-group-label">{{ $stageID }}</div>
+      {{ range $paths }}
+      <button
+        class="artifact-btn"
+        hx-get="/tasks/{{ $.Task.ID }}/artifact-modal?path={{ urlq . }}"
+        hx-target="#artifact-viewer-content"
+        hx-swap="innerHTML"
+        hx-on::after-request="document.getElementById('artifact-viewer-dialog').showModal()"
+      >
+        <span class="artifact-icon">📄</span>
+        <span class="artifact-filename">{{ lastSegment . }}</span>
+      </button>
+      {{ end }}
+    </div>
+    {{ end }}
+  {{ end }}
+  </div>
+</div>
+{{ end }}
+</div>
+{{ end }}

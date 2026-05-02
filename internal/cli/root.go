@@ -14,6 +14,7 @@ import (
 type Dependencies struct {
 	Registry *adapter.AdapterRegistry
 	Version  string
+	Runner   adapter.Runner
 }
 
 func NewRootCmd(deps *Dependencies) *cobra.Command {
@@ -59,6 +60,18 @@ func openStore(ctx context.Context, cfg *domain.SynapseConfig) (*store.SQLiteSto
 
 func createEngine(ctx context.Context, cfg *domain.SynapseConfig, s *store.SQLiteStore, deps *Dependencies) (*engine.PipelineEngine, error) {
 	return engine.NewPipelineEngineWithRegistry(s, deps.Registry, cfg.AdapterConfig, cfg.Adapter, cfg.PipelinesDir), nil
+}
+
+func CreateRunner(cfg *domain.SynapseConfig, deps *Dependencies) adapter.Runner {
+	if deps != nil && deps.Runner != nil {
+		return deps.Runner
+	}
+	switch cfg.AdapterConfig.SandboxMode {
+	case domain.SandboxDocker:
+		return adapter.NewDockerRunner(cfg.AdapterConfig.DockerConfig)
+	default:
+		return &adapter.HostRunner{}
+	}
 }
 
 func validateAdapterName(deps *Dependencies, adapterName string) error {

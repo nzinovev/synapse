@@ -432,6 +432,116 @@ func TestUpdatedAtChanges(t *testing.T) {
 	}
 }
 
+func TestContainerInfoRoundTrip(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	exitCode := 0
+	task := makeTask("task-ci-rt")
+	task.SandboxMode = domain.SandboxDocker
+	task.Runs = []domain.StageRun{
+		{
+			StageID:   "spec",
+			Attempt:   1,
+			Trigger:   domain.TriggerInitial,
+			StartedAt: time.Now().UTC().Add(-5 * time.Minute),
+			AgentResult: &domain.AgentResult{
+				Success:         true,
+				Stdout:          "spec output",
+				Stderr:          "",
+				DurationSeconds: 30.5,
+				ExitCode:        &exitCode,
+				ContainerInfo: &domain.ContainerInfo{
+					ContainerID:   "abc123def456ghi789jkl012mno345pqr678",
+					Image:         "synapse/agent-claude:latest",
+					NetworkPolicy: domain.NetworkRestricted,
+					CPULimit:      2.0,
+					MemoryLimitMB: 4096,
+				},
+			},
+		},
+		{
+			StageID:   "adr",
+			Attempt:   1,
+			Trigger:   domain.TriggerInitial,
+			StartedAt: time.Now().UTC().Add(-3 * time.Minute),
+			AgentResult: &domain.AgentResult{
+				Success:         true,
+				Stdout:          "adr output",
+				Stderr:          "",
+				DurationSeconds: 20.0,
+				ExitCode:        &exitCode,
+			},
+		},
+	}
+
+	if err := store.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+
+	loaded, err := store.LoadTask(ctx, "task-ci-rt")
+	if err != nil {
+		t.Fatalf("LoadTask: %v", err)
+	}
+
+	if loaded.SandboxMode != domain.SandboxDocker {
+		t.Errorf("SandboxMode = %q, want %q", loaded.SandboxMode, domain.SandboxDocker)
+	}
+
+	if len(loaded.Runs) != 2 {
+		t.Fatalf("len(Runs) = %d, want 2", len(loaded.Runs))
+	}
+
+	// First run has ContainerInfo.
+	specRun := loaded.Runs[0]
+	if specRun.AgentResult == nil {
+		t.Fatal("spec run AgentResult = nil")
+	}
+	if specRun.AgentResult.ContainerInfo == nil {
+		t.Fatal("spec run ContainerInfo = nil, want non-nil")
+	}
+	ci := specRun.AgentResult.ContainerInfo
+	if ci.ContainerID != "abc123def456ghi789jkl012mno345pqr678" {
+		t.Errorf("ContainerID = %q, want full ID", ci.ContainerID)
+	}
+	if ci.Image != "synapse/agent-claude:latest" {
+		t.Errorf("Image = %q, want synapse/agent-claude:latest", ci.Image)
+	}
+	if ci.NetworkPolicy != domain.NetworkRestricted {
+		t.Errorf("NetworkPolicy = %q, want restricted", ci.NetworkPolicy)
+	}
+	if ci.CPULimit != 2.0 {
+		t.Errorf("CPULimit = %f, want 2.0", ci.CPULimit)
+	}
+	if ci.MemoryLimitMB != 4096 {
+		t.Errorf("MemoryLimitMB = %d, want 4096", ci.MemoryLimitMB)
+	}
+
+	// Second run has no ContainerInfo.
+	adrRun := loaded.Runs[1]
+	if adrRun.AgentResult != nil && adrRun.AgentResult.ContainerInfo != nil {
+		t.Error("adr run ContainerInfo = non-nil, want nil")
+	}
+
+	// Verify round-trip through SaveTask.
+	task.Status = domain.StatusRunning
+	if err := store.SaveTask(ctx, task); err != nil {
+		t.Fatalf("SaveTask: %v", err)
+	}
+
+	reloaded, _ := store.LoadTask(ctx, "task-ci-rt")
+	reloadedCI := reloaded.Runs[0].AgentResult.ContainerInfo
+	if reloadedCI == nil {
+		t.Fatal("after SaveTask: ContainerInfo = nil")
+	}
+	if reloadedCI.ContainerID != "abc123def456ghi789jkl012mno345pqr678" {
+		t.Errorf("after SaveTask: ContainerID = %q, want full ID", reloadedCI.ContainerID)
+	}
+	if reloadedCI.MemoryLimitMB != 4096 {
+		t.Errorf("after SaveTask: MemoryLimitMB = %d, want 4096", reloadedCI.MemoryLimitMB)
+	}
+}
+
 func TestNilAgentResultRoundTrip(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()

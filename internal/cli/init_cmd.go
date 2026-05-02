@@ -36,6 +36,12 @@ func newInitCmd() *cobra.Command {
 				return fmt.Errorf("unknown adapter %q. Choose claude_cli, cursor_cli, or fake", adapterChoice)
 			}
 
+			sandboxMode := prompt(reader, "Sandbox mode [docker/host] [docker]", "docker")
+			sandboxMode = strings.ToLower(strings.TrimSpace(sandboxMode))
+			if sandboxMode != "docker" && sandboxMode != "host" {
+				return fmt.Errorf("unknown sandbox mode %q. Choose docker or host", sandboxMode)
+			}
+
 			claudeBinary := prompt(reader, "Path to claude binary", "claude")
 			agentBinary := prompt(reader, "Path to Cursor `agent` binary", "agent")
 
@@ -47,6 +53,7 @@ func newInitCmd() *cobra.Command {
 			cfg.AdapterConfig.ClaudeBinary = claudeBinary
 			cfg.AdapterConfig.AgentBinary = agentBinary
 			cfg.AdapterConfig.AgentPromptsDir = agentPromptsDir
+			cfg.AdapterConfig.SandboxMode = domain.SandboxMode(sandboxMode)
 
 			if err := cfg.SaveGlobal(); err != nil {
 				return fmt.Errorf("failed to save config: %w", err)
@@ -57,6 +64,7 @@ func newInitCmd() *cobra.Command {
 			fmt.Printf("  claude:       %s\n", claudeBinary)
 			fmt.Printf("  agent:        %s\n", agentBinary)
 			fmt.Printf("  prompts_dir:  %s\n", agentPromptsDir)
+			fmt.Printf("  sandbox:      %s\n", sandboxMode)
 			return nil
 		},
 	}

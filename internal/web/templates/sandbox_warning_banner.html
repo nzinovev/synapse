@@ -1,0 +1,16 @@
+{{ define "sandbox_warning_banner.html" }}
+{{ if eq .SandboxMode "host" }}
+<div class="sandbox-warning-banner" role="alert" aria-live="assertive">
+  <span class="sandbox-warning-icon">&#9888;</span>
+  <span class="sandbox-warning-text">
+    {{ if eq .SandboxReason "flag" }}
+      Agent is running without sandbox. It has full access to your system, including SSH keys and command history.
+    {{ else if eq .SandboxReason "config" }}
+      Sandbox is disabled in configuration. The agent has full access to the system.
+    {{ else }}
+      Docker not found. Agent is running directly on the host without isolation.
+    {{ end }}
+  </span>
+</div>
+{{ end }}
+{{ end }}

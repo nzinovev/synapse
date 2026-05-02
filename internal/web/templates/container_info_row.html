@@ -1,0 +1,13 @@
+{{ define "container_info_row.html" }}
+{{ if and (eq .SandboxMode "docker") .ContainerInfo }}
+<div class="meta-row">
+  <span class="meta-label">Container</span>
+  <span class="meta-value mono" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <span title="{{ .ContainerInfo.ContainerID }}">{{ truncID .ContainerInfo.ContainerID 12 }}</span>
+    <span style="color:var(--muted)">{{ .ContainerInfo.Image }}</span>
+    <span class="badge network-badge-{{ .ContainerInfo.NetworkPolicy }}">{{ .ContainerInfo.NetworkPolicy }}</span>
+    <span style="color:var(--muted);font-size:11px">{{ .ContainerInfo.CPULimit }} CPU / {{ .ContainerInfo.MemoryLimitMB }} MB RAM</span>
+  </span>
+</div>
+{{ end }}
+{{ end }}

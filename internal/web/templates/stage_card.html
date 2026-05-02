@@ -92,6 +92,11 @@
     </div>
     <div class="pipeline-footer">
       <span class="badge badge-{{ .Task.Status }}">{{ .Task.Status }}</span>
+      {{ if eq .Task.SandboxMode "docker" }}
+      <span class="sandbox-badge sandbox-badge-docker" aria-label="Running in Docker sandbox">sandbox</span>
+      {{ else }}
+      <span class="sandbox-badge sandbox-badge-host" aria-label="Running on host without sandbox">host</span>
+      {{ end }}
       {{ if eq .Task.Status "done" }}
       <span class="current-stage-label">Current stage: <span class="current-stage-name">{{ .Task.CurrentStageID }}</span></span>
       <span class="all-complete">All stages complete.</span>
@@ -140,7 +145,7 @@
 </section>
 {{ else if eq .Task.Status "running" }}
 <section class="gate-controls">
-  <p class="muted running-indicator">Agent is running — dashboard refreshes automatically.</p>
+  <p class="muted running-indicator">{{ if eq .Task.SandboxMode "docker" }}Agent is running in container — dashboard refreshes automatically.{{ else }}Agent is running — dashboard refreshes automatically.{{ end }}</p>
 </section>
 {{ else if eq .Task.Status "blocked" }}
 <section class="gate-controls">

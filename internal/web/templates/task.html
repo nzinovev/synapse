@@ -3,6 +3,16 @@
 {{ define "content" }}
 <div style="max-width:900px;margin:0 auto;padding:32px 48px 64px;display:flex;flex-direction:column;gap:16px">
 
+  {{/* Sandbox warning banner — host mode only */}}
+  {{ if eq .Task.SandboxMode "host" }}
+  <div class="sandbox-warning-banner" role="alert" aria-live="assertive">
+    <span class="sandbox-warning-icon">&#9888;</span>
+    <span class="sandbox-warning-text">
+      Sandbox is disabled in configuration. The agent has full access to the system.
+    </span>
+  </div>
+  {{ end }}
+
   {{/* Description card */}}
   <div class="card">
     <div class="card-header">
@@ -23,6 +33,15 @@
           <span class="meta-label">Created</span>
           <span class="meta-value nowrap">{{ fmtTimeFull .Task.CreatedAt }}</span>
         </div>
+        {{ if eq .Task.SandboxMode "docker" }}
+        <div class="meta-row">
+          <span class="meta-label">Container</span>
+          <span class="meta-value mono" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span class="sandbox-badge sandbox-badge-docker" aria-label="Running in Docker sandbox">sandbox</span>
+            <span class="network-badge-{{ .SandboxNetworkPolicy }}">{{ .SandboxNetworkPolicy }}</span>
+          </span>
+        </div>
+        {{ end }}
       </div>
     </div>
   </div>

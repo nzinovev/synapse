@@ -19,6 +19,7 @@ func newRunCmd(deps *Dependencies) *cobra.Command {
 	var adapterName string
 	var jsonOutput bool
 	var taskNumber string
+	var noSandbox bool
 
 	cmd := &cobra.Command{
 		Use:   "run <pipeline> [description]",
@@ -80,6 +81,13 @@ func newRunCmd(deps *Dependencies) *cobra.Command {
 				return err
 			}
 
+			// Handle --no-sandbox flag
+			if noSandbox {
+				printNoSandboxWarning()
+				time.Sleep(3 * time.Second)
+				cfg.AdapterConfig.SandboxMode = domain.SandboxHost
+			}
+
 			s, err := openStore(ctx, cfg)
 			if err != nil {
 				return err
@@ -112,6 +120,7 @@ func newRunCmd(deps *Dependencies) *cobra.Command {
 					Status:         domain.StatusRunning,
 					Artifacts:      make(map[string][]string),
 					Adapter:        adapterName,
+					SandboxMode:    cfg.AdapterConfig.SandboxMode,
 				}
 				if err := s.CreateTask(ctx, task); err != nil {
 					if domain.IsDuplicateIDError(err) {
@@ -147,7 +156,25 @@ func newRunCmd(deps *Dependencies) *cobra.Command {
 	cmd.Flags().StringVarP(&taskNumber, "task-number", "n", "", "Task number (required).")
 	cmd.Flags().StringVar(&adapterName, "adapter", "", "Agent adapter to use (e.g., claude_cli, cursor_cli). Defaults to global config.")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Machine-readable JSON output.")
+	cmd.Flags().BoolVar(&noSandbox, "no-sandbox", false, "Run agent directly on host without Docker sandbox (WARNING: reduces security)")
 	return cmd
+}
+
+func printNoSandboxWarning() {
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "╔══════════════════════════════════════════════════════════════════════════════╗")
+	fmt.Fprintln(os.Stderr, "║ WARNING: Running agent directly on host without Docker sandbox             ║")
+	fmt.Fprintln(os.Stderr, "║                                                                            ║")
+	fmt.Fprintln(os.Stderr, "║ This gives the agent full access to your machine including:                 ║")
+	fmt.Fprintln(os.Stderr, "║ • Your home directory and all its contents                                  ║")
+	fmt.Fprintln(os.Stderr, "║ • SSH keys, shell history, and environment variables                       ║")
+	fmt.Fprintln(os.Stderr, "║ • Full filesystem access                                                    ║")
+	fmt.Fprintln(os.Stderr, "║ Network connectivity to external services                                    ║")
+	fmt.Fprintln(os.Stderr, "║                                                                            ║")
+	fmt.Fprintln(os.Stderr, "║ For better security, use Docker containers (the default mode).              ║")
+	fmt.Fprintln(os.Stderr, "║                                                                            ║")
+	fmt.Fprintln(os.Stderr, "╚══════════════════════════════════════════════════════════════════════════════╝")
+	fmt.Fprintln(os.Stderr, "")
 }
 
 func printTask(task *domain.Task, asJSON bool) {
@@ -173,6 +200,30 @@ func printTask(task *domain.Task, asJSON bool) {
 
 	if task.Adapter != "" {
 		fmt.Printf("  Adapter:  %s\n", task.Adapter)
+	}
+
+	switch task.SandboxMode {
+	case domain.SandboxDocker:
+		fmt.Printf("  Sandbox:  docker (restricted)\n")
+	case domain.SandboxHost:
+		fmt.Printf("  Sandbox:  host (no isolation)\n")
+	}
+
+	// Show container info from the most recent completed run.
+	for i := len(task.Runs) - 1; i >= 0; i-- {
+		run := task.Runs[i]
+		if run.AgentResult != nil && run.AgentResult.ContainerInfo != nil {
+			ci := run.AgentResult.ContainerInfo
+			shortID := ci.ContainerID
+			if len(shortID) > 12 {
+				shortID = shortID[:12]
+			}
+			fmt.Printf("  Image:    %s\n", ci.Image)
+			fmt.Printf("  Container:%s\n", shortID)
+			fmt.Printf("  Network:  %s\n", ci.NetworkPolicy)
+			fmt.Printf("  Resources:%.1f CPU / %d MB RAM\n", ci.CPULimit, ci.MemoryLimitMB)
+			break
+		}
 	}
 
 	if task.Status == domain.StatusAwaitingGate {

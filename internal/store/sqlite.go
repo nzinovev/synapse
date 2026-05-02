@@ -54,12 +54,10 @@ func NewSQLiteStore(ctx context.Context, dbPath string) (*SQLiteStore, error) {
 	return &SQLiteStore{db: db, taskDir: taskDir}, nil
 }
 
+func (s *SQLiteStore) DB() *sql.DB { return s.db }
+
 func (s *SQLiteStore) Close() error {
 	return s.db.Close()
-}
-
-func (s *SQLiteStore) DB() *sql.DB {
-	return s.db
 }
 
 func (s *SQLiteStore) CreateTask(ctx context.Context, task *domain.Task) error {

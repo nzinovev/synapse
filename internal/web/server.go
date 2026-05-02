@@ -2,7 +2,6 @@ package web
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"io/fs"
 	"log"
@@ -109,23 +108,13 @@ func (s *Server) resolvePipeline(task *domain.Task) *domain.Pipeline {
 func NewServerFromConfig(cfg *domain.SynapseConfig, registry *adapter.AdapterRegistry) (*Server, error) {
 	ctx := context.Background()
 
-	db, err := sql.Open("sqlite", fmt.Sprintf("file:%s?_busy_timeout=5000&_journal_mode=WAL&_foreign_keys=1", cfg.DBPath))
-	if err != nil {
-		return nil, fmt.Errorf("open db: %w", err)
-	}
-
-	if err := store.RunMigrations(ctx, db); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("run migrations: %w", err)
-	}
-
 	s, err := store.NewSQLiteStore(ctx, cfg.DBPath)
 	if err != nil {
 		return nil, fmt.Errorf("open store: %w", err)
 	}
 
 	eng := engine.NewPipelineEngineWithRegistry(s, registry, cfg.AdapterConfig, cfg.Adapter, cfg.PipelinesDir)
-	q := queue.NewSQLiteQueueStore(db)
+	q := queue.NewSQLiteQueueStore(s.DB())
 
 	adapterNames := registry.SelectableNames()
 

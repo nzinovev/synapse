@@ -37,11 +37,11 @@ type Question struct {
 }
 
 type ModelUsage struct {
-	Model             string `json:"model"`
-	InputTokens       int    `json:"input_tokens"`
-	OutputTokens      int    `json:"output_tokens"`
-	CacheReadTokens   int    `json:"cache_read_tokens"`
-	CacheWriteTokens  int    `json:"cache_write_tokens"`
+	Model            string `json:"model"`
+	InputTokens      int    `json:"input_tokens"`
+	OutputTokens     int    `json:"output_tokens"`
+	CacheReadTokens  int    `json:"cache_read_tokens"`
+	CacheWriteTokens int    `json:"cache_write_tokens"`
 }
 
 type FeedbackDetail struct {
@@ -56,19 +56,23 @@ type PriorOutput struct {
 }
 
 type RunInput struct {
-	SchemaVersion string            `json:"schema_version"`
-	TaskID        string            `json:"task_id"`
-	TaskNumber    string            `json:"task_number"`
-	Goal          string            `json:"goal"`
-	WorkspacePath string            `json:"workspace_path"`
-	StageID       string            `json:"stage_id"`
-	PipelineName  string            `json:"pipeline_name"`
-	Gate          domain.Gate       `json:"gate"`
-	PRIndex       int               `json:"pr_index"`
-	FixCycleCount int               `json:"fix_cycle_count"`
-	PriorOutputs  []PriorOutput     `json:"prior_outputs"`
-	Feedback      *FeedbackDetail   `json:"feedback,omitempty"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
+	SchemaVersion  string            `json:"schema_version"`
+	TaskID         string            `json:"task_id"`
+	TaskNumber     string            `json:"task_number"`
+	Goal           string            `json:"goal"`
+	WorkspacePath  string            `json:"workspace_path"`
+	StageWorkdir   string            `json:"stage_workdir,omitempty"`
+	StageID        string            `json:"stage_id"`
+	PipelineName   string            `json:"pipeline_name"`
+	Gate           domain.Gate       `json:"gate"`
+	PRIndex        int               `json:"pr_index"`
+	FixCycleCount  int               `json:"fix_cycle_count"`
+	PriorOutputs   []PriorOutput     `json:"prior_outputs"`
+	Feedback       *FeedbackDetail   `json:"feedback,omitempty"`
+	PreviousStdout *string           `json:"previous_stdout,omitempty"`
+	PreviousStderr *string           `json:"previous_stderr,omitempty"`
+	Model          string            `json:"model,omitempty"`
+	Metadata       map[string]string `json:"metadata,omitempty"`
 }
 
 func NewRunInput(taskID, taskNumber, goal, workspacePath, stageID, pipelineName string, gate domain.Gate) RunInput {

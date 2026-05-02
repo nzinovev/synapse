@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/nzinovev/synapse/internal/adapter"
+	"github.com/nzinovev/synapse/internal/agent"
 	"github.com/nzinovev/synapse/internal/domain"
 	"github.com/nzinovev/synapse/internal/engine"
 	"github.com/nzinovev/synapse/internal/store"
@@ -12,8 +13,9 @@ import (
 )
 
 type Dependencies struct {
-	Registry *adapter.AdapterRegistry
-	Version  string
+	Registry      *adapter.AdapterRegistry
+	AgentRegistry *agent.AgentRegistry
+	Version       string
 }
 
 func NewRootCmd(deps *Dependencies) *cobra.Command {

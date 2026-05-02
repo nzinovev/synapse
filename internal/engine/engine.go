@@ -617,6 +617,22 @@ func (e *PipelineEngine) runLoop(ctx context.Context, task *domain.Task) (*domai
 			fmt.Sprintf("Stage %q completed successfully", stage.ID),
 			map[string]any{"artifacts": newArtifacts})
 
+		if result.ContainerInfo != nil {
+			shortID := result.ContainerInfo.ContainerID
+			if len(shortID) > 12 {
+				shortID = shortID[:12]
+			}
+			e.emitEvent(ctx, task.ID, stage.ID, domain.EventAgentOutput,
+				fmt.Sprintf("Container %s completed (image=%s)", shortID, result.ContainerInfo.Image),
+				map[string]any{
+					"container_id":    result.ContainerInfo.ContainerID,
+					"image":           result.ContainerInfo.Image,
+					"network_policy":  string(result.ContainerInfo.NetworkPolicy),
+					"cpu_limit":       result.ContainerInfo.CPULimit,
+					"memory_limit_mb": result.ContainerInfo.MemoryLimitMB,
+				})
+		}
+
 		// Evaluate gate.
 		terminal, err := e.evaluateGate(ctx, task, pipeline, stage, newArtifacts)
 		if err != nil {

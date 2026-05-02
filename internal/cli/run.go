@@ -202,6 +202,30 @@ func printTask(task *domain.Task, asJSON bool) {
 		fmt.Printf("  Adapter:  %s\n", task.Adapter)
 	}
 
+	switch task.SandboxMode {
+	case domain.SandboxDocker:
+		fmt.Printf("  Sandbox:  docker (restricted)\n")
+	case domain.SandboxHost:
+		fmt.Printf("  Sandbox:  host (no isolation)\n")
+	}
+
+	// Show container info from the most recent completed run.
+	for i := len(task.Runs) - 1; i >= 0; i-- {
+		run := task.Runs[i]
+		if run.AgentResult != nil && run.AgentResult.ContainerInfo != nil {
+			ci := run.AgentResult.ContainerInfo
+			shortID := ci.ContainerID
+			if len(shortID) > 12 {
+				shortID = shortID[:12]
+			}
+			fmt.Printf("  Image:    %s\n", ci.Image)
+			fmt.Printf("  Container:%s\n", shortID)
+			fmt.Printf("  Network:  %s\n", ci.NetworkPolicy)
+			fmt.Printf("  Resources:%.1f CPU / %d MB RAM\n", ci.CPULimit, ci.MemoryLimitMB)
+			break
+		}
+	}
+
 	if task.Status == domain.StatusAwaitingGate {
 		fmt.Println()
 		fmt.Println("  Awaiting gate approval. Use:")

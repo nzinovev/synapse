@@ -11,6 +11,7 @@ import (
 type ClaudeCliAdapter struct {
 	AgentPromptsDir string
 	ClaudeBinary    string
+	Runner          Runner
 }
 
 func (c *ClaudeCliAdapter) Name() string {
@@ -51,15 +52,20 @@ func (c *ClaudeCliAdapter) Invoke(ctx context.Context, params domain.InvokeParam
 	}
 	cmd = append(cmd, userMessage)
 
-	result := RunCLICommand(ctx, cmd, params.WorkingDir, params.StageWorkdir)
-	return result, nil
+	return c.Runner.Run(ctx, RunnerParams{
+		Command:      cmd,
+		WorkingDir:   params.WorkingDir,
+		StageWorkdir: params.StageWorkdir,
+		AgentName:    params.AgentName,
+	})
 }
 
-func RegisterClaudeCLI(registry *AdapterRegistry) {
+func RegisterClaudeCLI(registry *AdapterRegistry, runner Runner) {
 	registry.Register("claude_cli", func(cfg domain.AdapterConfig) (AgentAdapter, error) {
 		return &ClaudeCliAdapter{
 			AgentPromptsDir: cfg.AgentPromptsDir,
 			ClaudeBinary:    cfg.ClaudeBinary,
+			Runner:          runner,
 		}, nil
 	})
 }

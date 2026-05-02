@@ -112,6 +112,7 @@ func newRunCmd(deps *Dependencies) *cobra.Command {
 					Status:         domain.StatusRunning,
 					Artifacts:      make(map[string][]string),
 					Adapter:        adapterName,
+					SandboxMode:    cfg.AdapterConfig.SandboxMode,
 				}
 				if err := s.CreateTask(ctx, task); err != nil {
 					if domain.IsDuplicateIDError(err) {

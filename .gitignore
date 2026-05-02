@@ -8,4 +8,5 @@ build/
 .synapse/
 *.tmp
 docs/
+docs/handoff
 .claude/

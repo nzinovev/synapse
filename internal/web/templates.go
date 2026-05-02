@@ -68,6 +68,12 @@ func init() {
 			}
 			return n
 		},
+		"truncID": func(s string, n int) string {
+			if len(s) > n {
+				return s[:n]
+			}
+			return s
+		},
 	}
 }
 
@@ -81,7 +87,9 @@ func LoadTemplates() (*TemplateCache, error) {
 		"templates/artifact_modal.html",
 		"templates/browse.html",
 		"templates/artifacts_card.html",
-	))
+			"templates/sandbox_warning_banner.html",
+			"templates/container_info_row.html",
+		))
 
 	// Each page gets its own clone of the base + fragments so
 	// define/block overrides don't collide across pages.
@@ -111,7 +119,7 @@ func pageName(name string) string {
 func (tc *TemplateCache) ExecuteTemplate(w io.Writer, name string, data any) error {
 	// For fragment templates (stage_card.html, stage_logs.html),
 	// pick any page's template set — they all share the same fragments.
-	if name == "stage_card.html" || name == "stage_logs.html" || name == "browse.html" || name == "artifact_modal.html" || name == "artifacts_card.html" {
+	if name == "stage_card.html" || name == "stage_logs.html" || name == "browse.html" || name == "artifact_modal.html" || name == "artifacts_card.html" || name == "sandbox_warning_banner.html" || name == "container_info_row.html" {
 		for _, tmpl := range tc.pages {
 			return tmpl.ExecuteTemplate(w, name, data)
 		}

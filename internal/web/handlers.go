@@ -120,16 +120,32 @@ func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
 	pipeline := s.resolvePipeline(task)
 	events, _ := s.store.LoadEvents(ctx, taskID)
 
+	var latestContainerInfo *domain.ContainerInfo
+	for i := len(task.Runs) - 1; i >= 0; i-- {
+		if task.Runs[i].AgentResult != nil && task.Runs[i].AgentResult.ContainerInfo != nil {
+			latestContainerInfo = task.Runs[i].AgentResult.ContainerInfo
+			break
+		}
+	}
+
+	sandboxNetworkPolicy := string(s.cfg.AdapterConfig.DockerConfig.NetworkPolicy)
+	if latestContainerInfo != nil {
+		sandboxNetworkPolicy = string(latestContainerInfo.NetworkPolicy)
+	}
+
 	s.templates.ExecuteTemplate(w, "task.html", map[string]any{
-		"Task":              task,
-		"Pipeline":          pipeline,
-		"Events":            events,
-		"WorkingDir":        task.WorkingDir,
-		"AdapterNames":      s.adapterNames,
-		"DefaultAdapter":    s.defaultAdapter,
-		"BreadcrumbRepo":    lastSegment(task.WorkingDir),
-		"BreadcrumbRepoURL": url.QueryEscape(task.WorkingDir),
-		"BreadcrumbTaskID":  task.ID,
+		"Task":                 task,
+		"Pipeline":             pipeline,
+		"Events":               events,
+		"WorkingDir":           task.WorkingDir,
+		"AdapterNames":         s.adapterNames,
+		"DefaultAdapter":       s.defaultAdapter,
+		"BreadcrumbRepo":       lastSegment(task.WorkingDir),
+		"BreadcrumbRepoURL":    url.QueryEscape(task.WorkingDir),
+		"BreadcrumbTaskID":     task.ID,
+		"SandboxMode":          task.SandboxMode,
+		"SandboxNetworkPolicy": sandboxNetworkPolicy,
+		"ContainerInfo":        latestContainerInfo,
 	})
 }
 
@@ -460,6 +476,7 @@ func (s *Server) handleStageLogs(w http.ResponseWriter, r *http.Request) {
 		Duration   float64
 		Stdout     string
 		Stderr     string
+		ContainerInfo *domain.ContainerInfo
 	}
 
 	var attempts []attemptInfo
@@ -475,6 +492,7 @@ func (s *Server) handleStageLogs(w http.ResponseWriter, r *http.Request) {
 			info.Duration = run.AgentResult.DurationSeconds
 			info.Stdout = run.AgentResult.Stdout
 			info.Stderr = run.AgentResult.Stderr
+			info.ContainerInfo = run.AgentResult.ContainerInfo
 		}
 		attempts = append(attempts, info)
 	}
@@ -538,6 +556,11 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	firstStage := pipeline.Stages[0]
 	now := time.Now().UTC()
 
+	sandboxMode := domain.SandboxMode(strings.TrimSpace(r.FormValue("sandbox_mode")))
+	if sandboxMode == "" {
+		sandboxMode = s.cfg.AdapterConfig.SandboxMode
+	}
+
 	var task *domain.Task
 	var taskID string
 	for suffix := 0; suffix <= 9; suffix++ {
@@ -554,6 +577,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 			FixCycleCount:  0,
 			PRIndex:        1,
 			Adapter:        adapterName,
+			SandboxMode:    sandboxMode,
 		}
 		if err := s.store.CreateTask(ctx, task); err != nil {
 			if domain.IsDuplicateIDError(err) {

@@ -1,0 +1,16 @@
+{{ define "sandbox_warning_banner.html" }}
+{{ if eq .SandboxMode "host" }}
+<div class="sandbox-warning-banner" role="alert" aria-live="assertive">
+  <span class="sandbox-warning-icon">&#9888;</span>
+  <span class="sandbox-warning-text">
+    {{ if eq .SandboxReason "flag" }}
+      Агент запущен без песочницы. Он имеет полный доступ к вашей системе, включая SSH-ключи и историю команд.
+    {{ else if eq .SandboxReason "config" }}
+      Песочница отключена в конфигурации. Агент имеет полный доступ к системе.
+    {{ else }}
+      Docker не найден. Агент запущен напрямую на хосте без изоляции.
+    {{ end }}
+  </span>
+</div>
+{{ end }}
+{{ end }}

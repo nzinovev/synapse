@@ -29,12 +29,13 @@ const (
 )
 
 type AgentResult struct {
-	Success          bool     `json:"success"`
-	Stdout           string   `json:"stdout"`
-	Stderr           string   `json:"stderr"`
-	ArtifactsCreated []string `json:"artifacts_created"`
-	DurationSeconds  float64  `json:"duration_seconds"`
-	ExitCode         *int     `json:"exit_code"`
+	Success          bool           `json:"success"`
+	Stdout           string         `json:"stdout"`
+	Stderr           string         `json:"stderr"`
+	ArtifactsCreated []string       `json:"artifacts_created"`
+	DurationSeconds  float64        `json:"duration_seconds"`
+	ExitCode         *int           `json:"exit_code"`
+	ContainerInfo    *ContainerInfo `json:"container_info"`
 }
 
 type StageRun struct {
@@ -63,6 +64,7 @@ type Task struct {
 	FixCycleCount  int                 `json:"fix_cycle_count"`
 	PRIndex        int                 `json:"pr_index"`
 	Adapter        string              `json:"adapter"`
+	SandboxMode    SandboxMode         `json:"sandbox_mode"`
 }
 
 func GenerateTaskID(taskNumber string, now time.Time, collisionSuffix int) string {

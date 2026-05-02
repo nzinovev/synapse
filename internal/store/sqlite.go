@@ -82,10 +82,10 @@ func (s *SQLiteStore) insertTask(ctx context.Context, task *domain.Task) error {
 
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO tasks (id, pipeline_name, description, working_dir, current_stage_id,
-		                   status, created_at, updated_at, fix_cycle_count, pr_index, artifacts_json, adapter)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		                   status, created_at, updated_at, fix_cycle_count, pr_index, artifacts_json, adapter, sandbox_mode)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		task.ID, task.PipelineName, task.Description, task.WorkingDir, task.CurrentStageID,
-		string(task.Status), task.CreatedAt, task.UpdatedAt, task.FixCycleCount, task.PRIndex, string(artifactsJSON), task.Adapter,
+		string(task.Status), task.CreatedAt, task.UpdatedAt, task.FixCycleCount, task.PRIndex, string(artifactsJSON), task.Adapter, string(task.SandboxMode),
 	)
 	if err != nil {
 		return fmt.Errorf("insert task: %w", err)
@@ -101,20 +101,21 @@ func (s *SQLiteStore) insertTask(ctx context.Context, task *domain.Task) error {
 
 func (s *SQLiteStore) LoadTask(ctx context.Context, taskID string) (*domain.Task, error) {
 	var t domain.Task
-	var status, artifactsJSON string
+	var status, artifactsJSON, sandboxMode string
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, pipeline_name, description, working_dir, current_stage_id,
-		       status, created_at, updated_at, fix_cycle_count, pr_index, artifacts_json, adapter
+		       status, created_at, updated_at, fix_cycle_count, pr_index, artifacts_json, adapter, sandbox_mode
 		FROM tasks WHERE id = ?`, taskID,
 	).Scan(&t.ID, &t.PipelineName, &t.Description, &t.WorkingDir, &t.CurrentStageID,
-		&status, &t.CreatedAt, &t.UpdatedAt, &t.FixCycleCount, &t.PRIndex, &artifactsJSON, &t.Adapter,
+		&status, &t.CreatedAt, &t.UpdatedAt, &t.FixCycleCount, &t.PRIndex, &artifactsJSON, &t.Adapter, &sandboxMode,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query task: %w", err)
 	}
 
 	t.Status = domain.TaskStatus(status)
+	t.SandboxMode = domain.SandboxMode(sandboxMode)
 	t.Artifacts = make(map[string][]string)
 	if err := json.Unmarshal([]byte(artifactsJSON), &t.Artifacts); err != nil {
 		return nil, fmt.Errorf("unmarshal artifacts: %w", err)
@@ -145,10 +146,10 @@ func (s *SQLiteStore) SaveTask(ctx context.Context, task *domain.Task) error {
 
 	_, err = tx.ExecContext(ctx, `
 		UPDATE tasks SET pipeline_name=?, description=?, working_dir=?, current_stage_id=?,
-		                 status=?, updated_at=?, fix_cycle_count=?, pr_index=?, artifacts_json=?, adapter=?
+		                 status=?, updated_at=?, fix_cycle_count=?, pr_index=?, artifacts_json=?, adapter=?, sandbox_mode=?
 		WHERE id=?`,
 		task.PipelineName, task.Description, task.WorkingDir, task.CurrentStageID,
-		string(task.Status), task.UpdatedAt, task.FixCycleCount, task.PRIndex, string(artifactsJSON), task.Adapter,
+		string(task.Status), task.UpdatedAt, task.FixCycleCount, task.PRIndex, string(artifactsJSON), task.Adapter, string(task.SandboxMode),
 		task.ID,
 	)
 	if err != nil {
@@ -171,7 +172,7 @@ func (s *SQLiteStore) SaveTask(ctx context.Context, task *domain.Task) error {
 func (s *SQLiteStore) ListTasks(ctx context.Context) ([]*domain.Task, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, pipeline_name, description, working_dir, current_stage_id,
-		       status, created_at, updated_at, fix_cycle_count, pr_index, artifacts_json, adapter
+		       status, created_at, updated_at, fix_cycle_count, pr_index, artifacts_json, adapter, sandbox_mode
 		FROM tasks ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("list tasks: %w", err)
@@ -190,7 +191,7 @@ func (s *SQLiteStore) ListTasks(ctx context.Context) ([]*domain.Task, error) {
 		if err := rows.Scan(&tr.task.ID, &tr.task.PipelineName, &tr.task.Description,
 			&tr.task.WorkingDir, &tr.task.CurrentStageID,
 			&status, &tr.task.CreatedAt, &tr.task.UpdatedAt,
-			&tr.task.FixCycleCount, &tr.task.PRIndex, &tr.artifactsJSON, &tr.task.Adapter,
+			&tr.task.FixCycleCount, &tr.task.PRIndex, &tr.artifactsJSON, &tr.task.Adapter, &tr.task.SandboxMode,
 		); err != nil {
 			return nil, fmt.Errorf("scan task: %w", err)
 		}
@@ -273,6 +274,7 @@ func (s *SQLiteStore) insertStageRunInTx(tx dbtx, taskID string, run *domain.Sta
 	var artifactsJSON string
 	var feedback sql.Null[string]
 	var hasResult bool
+	var containerInfoJSON sql.Null[string]
 
 	if run.AgentResult != nil {
 		hasResult = true
@@ -287,6 +289,10 @@ func (s *SQLiteStore) insertStageRunInTx(tx dbtx, taskID string, run *domain.Sta
 		}
 		if run.AgentResult.ExitCode != nil {
 			exitCode = sql.Null[int]{V: *run.AgentResult.ExitCode, Valid: true}
+		}
+		if run.AgentResult.ContainerInfo != nil {
+			b, _ := json.Marshal(run.AgentResult.ContainerInfo)
+			containerInfoJSON = sql.Null[string]{V: string(b), Valid: true}
 		}
 	} else {
 		artifactsJSON = "[]"
@@ -304,10 +310,10 @@ func (s *SQLiteStore) insertStageRunInTx(tx dbtx, taskID string, run *domain.Sta
 	_, err := tx.ExecContext(context.Background(), `
 		INSERT INTO stage_runs (task_id, stage_id, attempt, trigger, started_at, finished_at,
 		                        stdout, stderr, exit_code, success, duration_seconds,
-		                        rejection_feedback, artifacts_json, has_result, adapter)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		                        rejection_feedback, artifacts_json, has_result, adapter, container_info_json)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		taskID, run.StageID, run.Attempt, string(run.Trigger), run.StartedAt, finishedAt,
-		stdout, stderr, exitCode, success, durationSec, feedback, artifactsJSON, hasResult, run.Adapter,
+		stdout, stderr, exitCode, success, durationSec, feedback, artifactsJSON, hasResult, run.Adapter, containerInfoJSON,
 	)
 	return err
 }
@@ -316,7 +322,7 @@ func (s *SQLiteStore) loadStageRuns(ctx context.Context, taskID string) ([]domai
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT stage_id, attempt, trigger, started_at, finished_at,
 		       stdout, stderr, exit_code, success, duration_seconds,
-		       rejection_feedback, artifacts_json, has_result, adapter
+		       rejection_feedback, artifacts_json, has_result, adapter, container_info_json
 		FROM stage_runs WHERE task_id = ? ORDER BY id ASC`, taskID,
 	)
 	if err != nil {
@@ -335,10 +341,11 @@ func (s *SQLiteStore) loadStageRuns(ctx context.Context, taskID string) ([]domai
 		var durationSec float64
 		var feedback sql.Null[string]
 		var hasResult bool
+		var containerInfoJSON sql.Null[string]
 
 		if err := rows.Scan(&r.StageID, &r.Attempt, &trigger, &r.StartedAt, &finishedAt,
 			&stdout, &stderr, &exitCode, &success, &durationSec,
-			&feedback, &artifactsJSON, &hasResult, &r.Adapter,
+			&feedback, &artifactsJSON, &hasResult, &r.Adapter, &containerInfoJSON,
 		); err != nil {
 			return nil, fmt.Errorf("scan stage run: %w", err)
 		}
@@ -359,6 +366,12 @@ func (s *SQLiteStore) loadStageRuns(ctx context.Context, taskID string) ([]domai
 				r.AgentResult.ExitCode = &exitCode.V
 			}
 			_ = json.Unmarshal([]byte(artifactsJSON), &r.AgentResult.ArtifactsCreated)
+			if containerInfoJSON.Valid {
+				var ci domain.ContainerInfo
+				if json.Unmarshal([]byte(containerInfoJSON.V), &ci) == nil {
+					r.AgentResult.ContainerInfo = &ci
+				}
+			}
 		}
 
 		if feedback.Valid {

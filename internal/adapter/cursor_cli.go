@@ -12,6 +12,7 @@ type CursorCliAdapter struct {
 	AgentPromptsDir string
 	AgentBinary     string
 	ExtraArgs       []string
+	Runner          Runner
 }
 
 func (c *CursorCliAdapter) Name() string {
@@ -56,16 +57,21 @@ func (c *CursorCliAdapter) Invoke(ctx context.Context, params domain.InvokeParam
 	}
 	cmd = append(cmd, fullPrompt)
 
-	result := RunCLICommand(ctx, cmd, params.WorkingDir, params.StageWorkdir)
-	return result, nil
+	return c.Runner.Run(ctx, RunnerParams{
+		Command:      cmd,
+		WorkingDir:   params.WorkingDir,
+		StageWorkdir: params.StageWorkdir,
+		AgentName:    params.AgentName,
+	})
 }
 
-func RegisterCursorCLI(registry *AdapterRegistry) {
+func RegisterCursorCLI(registry *AdapterRegistry, runner Runner) {
 	registry.Register("cursor_cli", func(cfg domain.AdapterConfig) (AgentAdapter, error) {
 		return &CursorCliAdapter{
 			AgentPromptsDir: cfg.AgentPromptsDir,
 			AgentBinary:     cfg.AgentBinary,
 			ExtraArgs:       cfg.CursorExtraArgs,
+			Runner:          runner,
 		}, nil
 	})
 }

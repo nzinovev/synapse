@@ -12,13 +12,17 @@ var version = "dev"
 
 func main() {
 	registry := adapter.NewRegistry()
+
+	runner := adapter.Runner(&adapter.HostRunner{})
+
 	adapter.RegisterFake(registry)
-	adapter.RegisterClaudeCLI(registry)
-	adapter.RegisterCursorCLI(registry)
+	adapter.RegisterClaudeCLI(registry, runner)
+	adapter.RegisterCursorCLI(registry, runner)
 
 	deps := &cli.Dependencies{
 		Registry: registry,
 		Version:  version,
+		Runner:   runner,
 	}
 
 	cmd := cli.NewRootCmd(deps)

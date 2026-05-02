@@ -452,6 +452,80 @@ func TestCancelRequiresCancellableStatus(t *testing.T) {
 	}
 }
 
+// blockingAdapter blocks until context is cancelled, then returns ctx.Err().
+type blockingAdapter struct {
+	adapter.FakeAdapter
+	started chan struct{}
+}
+
+func (b *blockingAdapter) Invoke(ctx context.Context, params domain.InvokeParams) (domain.AgentResult, error) {
+	close(b.started)
+	<-ctx.Done()
+	return domain.AgentResult{}, ctx.Err()
+}
+
+func TestCancelRunningTask(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	ctx := context.Background()
+	s, err := store.NewSQLiteStore(ctx, dbPath)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer s.Close()
+
+	singlePipeline := &domain.Pipeline{
+		Name: "single",
+		Stages: []domain.Stage{
+			{ID: "stage1", Agent: "spec-writer", Gate: domain.GateHumanApproval},
+		},
+	}
+
+	blk := &blockingAdapter{started: make(chan struct{})}
+	engine := NewPipelineEngineWithPipeline(s, blk, singlePipeline)
+
+	task := &domain.Task{
+		ID:             "task-cancel-running",
+		PipelineName:   "single",
+		Description:    "cancel while running",
+		WorkingDir:     tmpDir,
+		CurrentStageID: "stage1",
+		Status:         domain.StatusRunning,
+		Artifacts:      make(map[string][]string),
+	}
+	if err := s.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+
+	runDone := make(chan error, 1)
+	go func() {
+		_, err := engine.RunUntilGate(ctx, task.ID)
+		runDone <- err
+	}()
+
+	// Wait for the adapter to start, then cancel.
+	<-blk.started
+	result, err := engine.Cancel(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if result.Status != domain.StatusCancelled {
+		t.Errorf("Status = %s, want cancelled", result.Status)
+	}
+
+	// RunUntilGate should return without error (cancelled gracefully).
+	if err := <-runDone; err != nil {
+		t.Errorf("RunUntilGate returned error: %v", err)
+	}
+
+	// Idempotent: cancelling again should succeed.
+	_, err = engine.Cancel(ctx, task.ID)
+	if err != nil {
+		t.Errorf("second Cancel: %v", err)
+	}
+}
+
 func TestRetryRequiresBlockedOrEscalated(t *testing.T) {
 	engine, _, tmpDir, cleanup := newTestEngine(t)
 	defer cleanup()

@@ -189,12 +189,12 @@ func (e *PipelineEngine) Cancel(ctx context.Context, taskID string) (*domain.Tas
 		return nil, fmt.Errorf("load task: %w", err)
 	}
 
-	if task.Status != domain.StatusAwaitingGate && task.Status != domain.StatusRunning {
-		return nil, fmt.Errorf("task %s is not cancellable (status=%s)", taskID, task.Status)
-	}
-
 	if task.Status == domain.StatusCancelled {
 		return task, nil
+	}
+
+	if task.Status != domain.StatusAwaitingGate && task.Status != domain.StatusRunning {
+		return nil, fmt.Errorf("task %s is not cancellable (status=%s)", taskID, task.Status)
 	}
 
 	return e.doCancel(ctx, task)
@@ -612,6 +612,9 @@ func (e *PipelineEngine) runLoop(ctx context.Context, task *domain.Task) (*domai
 				Model:               resolvedModel,
 			})
 			if err != nil {
+				if invokeCtx.Err() == context.Canceled {
+					return e.doCancel(ctx, task)
+				}
 				return nil, fmt.Errorf("adapter invoke: %w", err)
 			}
 			result = r

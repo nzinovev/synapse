@@ -6,8 +6,6 @@ import (
 	"github.com/nzinovev/synapse/internal/domain"
 )
 
-const SchemaVersion = "synapse.result.v1"
-
 type StageStatus string
 
 const (
@@ -86,20 +84,6 @@ func NewRunInput(taskID, taskNumber, goal, workspacePath, stageID, pipelineName 
 		PipelineName:  pipelineName,
 		Gate:          gate,
 	}
-}
-
-type RunResult struct {
-	SchemaVersion   string            `json:"schema_version"`
-	Status          StageStatus       `json:"status"`
-	Summary         string            `json:"summary,omitempty"`
-	Artifacts       []ArtifactRef     `json:"artifacts,omitempty"`
-	OpenQuestions   []Question        `json:"open_questions,omitempty"`
-	Verdict         Verdict           `json:"verdict,omitempty"`
-	Stdout          string            `json:"stdout,omitempty"`
-	Stderr          string            `json:"stderr,omitempty"`
-	DurationSeconds float64           `json:"duration_seconds"`
-	Usage           *ModelUsage       `json:"usage,omitempty"`
-	Metadata        map[string]string `json:"metadata,omitempty"`
 }
 
 type Agent interface {

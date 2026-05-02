@@ -4,11 +4,11 @@
   <span class="sandbox-warning-icon">&#9888;</span>
   <span class="sandbox-warning-text">
     {{ if eq .SandboxReason "flag" }}
-      Агент запущен без песочницы. Он имеет полный доступ к вашей системе, включая SSH-ключи и историю команд.
+      Agent is running without sandbox. It has full access to your system, including SSH keys and command history.
     {{ else if eq .SandboxReason "config" }}
-      Песочница отключена в конфигурации. Агент имеет полный доступ к системе.
+      Sandbox is disabled in configuration. The agent has full access to the system.
     {{ else }}
-      Docker не найден. Агент запущен напрямую на хосте без изоляции.
+      Docker not found. Agent is running directly on the host without isolation.
     {{ end }}
   </span>
 </div>

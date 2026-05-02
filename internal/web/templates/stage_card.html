@@ -93,9 +93,9 @@
     <div class="pipeline-footer">
       <span class="badge badge-{{ .Task.Status }}">{{ .Task.Status }}</span>
       {{ if eq .Task.SandboxMode "docker" }}
-      <span class="sandbox-badge sandbox-badge-docker" aria-label="Running in Docker sandbox">песочница</span>
+      <span class="sandbox-badge sandbox-badge-docker" aria-label="Running in Docker sandbox">sandbox</span>
       {{ else }}
-      <span class="sandbox-badge sandbox-badge-host" aria-label="Running on host without sandbox">хост</span>
+      <span class="sandbox-badge sandbox-badge-host" aria-label="Running on host without sandbox">host</span>
       {{ end }}
       {{ if eq .Task.Status "done" }}
       <span class="current-stage-label">Current stage: <span class="current-stage-name">{{ .Task.CurrentStageID }}</span></span>

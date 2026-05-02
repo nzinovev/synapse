@@ -39,7 +39,7 @@
       <span class="attempt-meta">{{ if .Duration }}{{ fmtDuration .Duration }}s{{ end }}</span>
       {{ if .ContainerInfo }}
       <span class="attempt-meta" style="margin-left:4px">
-        <span class="sandbox-badge sandbox-badge-docker" style="font-size:9px;padding:1px 5px">песочница</span>
+        <span class="sandbox-badge sandbox-badge-docker" style="font-size:9px;padding:1px 5px">sandbox</span>
         <span title="{{ .ContainerInfo.ContainerID }}" style="font-family:var(--font-mono);font-size:11px">{{ truncID .ContainerInfo.ContainerID 12 }}</span>
         <span class="network-badge-{{ .ContainerInfo.NetworkPolicy }}" style="font-size:9px;padding:1px 5px">{{ .ContainerInfo.NetworkPolicy }}</span>
       </span>

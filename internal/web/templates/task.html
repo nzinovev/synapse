@@ -8,7 +8,7 @@
   <div class="sandbox-warning-banner" role="alert" aria-live="assertive">
     <span class="sandbox-warning-icon">&#9888;</span>
     <span class="sandbox-warning-text">
-      Песочница отключена в конфигурации. Агент имеет полный доступ к системе.
+      Sandbox is disabled in configuration. The agent has full access to the system.
     </span>
   </div>
   {{ end }}
@@ -35,10 +35,10 @@
         </div>
         {{ if eq .Task.SandboxMode "docker" }}
         <div class="meta-row">
-          <span class="meta-label">Контейнер</span>
+          <span class="meta-label">Container</span>
           <span class="meta-value mono" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span class="sandbox-badge sandbox-badge-docker" aria-label="Running in Docker sandbox">песочница</span>
-            <span class="network-badge-{{ .Task.SandboxNetworkPolicy }}">{{ .Task.SandboxNetworkPolicy }}</span>
+            <span class="sandbox-badge sandbox-badge-docker" aria-label="Running in Docker sandbox">sandbox</span>
+            <span class="network-badge-{{ .SandboxNetworkPolicy }}">{{ .SandboxNetworkPolicy }}</span>
           </span>
         </div>
         {{ end }}

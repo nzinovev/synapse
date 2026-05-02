@@ -52,6 +52,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		"AdapterNames":      s.adapterNames,
 		"DefaultAdapter":    s.defaultAdapter,
 		"DefaultProjectDir": defaultProjectDir,
+		"SandboxMode":       s.cfg.AdapterConfig.SandboxMode,
 	})
 }
 

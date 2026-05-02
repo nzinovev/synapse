@@ -141,6 +141,17 @@
 {{ else if eq .Task.Status "running" }}
 <section class="gate-controls">
   <p class="muted running-indicator">Agent is running — dashboard refreshes automatically.</p>
+  <form
+    hx-post="/tasks/{{ .Task.ID }}/cancel"
+    hx-target="#stage-card"
+    hx-swap="outerHTML"
+  >
+    <button type="submit" class="btn btn-cancel">Cancel</button>
+  </form>
+</section>
+{{ else if eq .Task.Status "cancelled" }}
+<section class="gate-controls">
+  <p class="cancelled-msg">Task was cancelled by the user.</p>
 </section>
 {{ else if eq .Task.Status "blocked" }}
 <section class="gate-controls">

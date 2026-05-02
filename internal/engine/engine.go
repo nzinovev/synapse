@@ -26,6 +26,7 @@ type PipelineEngine struct {
 	pipeline       *domain.Pipeline
 	taskMutexes    sync.Map
 	adapterCache   sync.Map // map[string]adapter.AgentAdapter
+	cancelFuncs    sync.Map // map[string]context.CancelFunc — per-task cancel functions
 }
 
 func NewPipelineEngine(s store.TaskStore, a adapter.AgentAdapter, pipelinesDir string) *PipelineEngine {
@@ -85,6 +86,22 @@ func (e *PipelineEngine) resolveAdapter(task *domain.Task) (adapter.AgentAdapter
 func (e *PipelineEngine) getMutex(taskID string) *sync.Mutex {
 	val, _ := e.taskMutexes.LoadOrStore(taskID, &sync.Mutex{})
 	return val.(*sync.Mutex)
+}
+
+func (e *PipelineEngine) setCancelFunc(taskID string, cancel context.CancelFunc) {
+	e.cancelFuncs.Store(taskID, cancel)
+}
+
+func (e *PipelineEngine) clearCancelFunc(taskID string) {
+	e.cancelFuncs.Delete(taskID)
+}
+
+func (e *PipelineEngine) getCancelFunc(taskID string) (context.CancelFunc, bool) {
+	v, ok := e.cancelFuncs.Load(taskID)
+	if !ok {
+		return nil, false
+	}
+	return v.(context.CancelFunc), true
 }
 
 func (e *PipelineEngine) loadPipeline(task *domain.Task) (*domain.Pipeline, error) {
@@ -159,17 +176,25 @@ func (e *PipelineEngine) Retry(ctx context.Context, taskID string) (*domain.Task
 }
 
 func (e *PipelineEngine) Cancel(ctx context.Context, taskID string) (*domain.Task, error) {
+	if cancel, ok := e.getCancelFunc(taskID); ok {
+		cancel()
+	}
+
 	mu := e.getMutex(taskID)
 	mu.Lock()
-	defer e.getMutex(taskID).Unlock()
+	defer mu.Unlock()
 
 	task, err := e.store.LoadTask(ctx, taskID)
 	if err != nil {
 		return nil, fmt.Errorf("load task: %w", err)
 	}
 
-	if task.Status != domain.StatusAwaitingGate {
-		return nil, fmt.Errorf("task %s is not AWAITING_GATE (status=%s); cannot cancel", taskID, task.Status)
+	if task.Status != domain.StatusAwaitingGate && task.Status != domain.StatusRunning {
+		return nil, fmt.Errorf("task %s is not cancellable (status=%s)", taskID, task.Status)
+	}
+
+	if task.Status == domain.StatusCancelled {
+		return task, nil
 	}
 
 	return e.doCancel(ctx, task)
@@ -370,6 +395,14 @@ func (e *PipelineEngine) doRetry(ctx context.Context, task *domain.Task) error {
 }
 
 func (e *PipelineEngine) doCancel(ctx context.Context, task *domain.Task) (*domain.Task, error) {
+	var cleaned []domain.StageRun
+	for _, r := range task.Runs {
+		if r.StartedAt.IsZero() || r.FinishedAt != nil {
+			cleaned = append(cleaned, r)
+		}
+	}
+	task.Runs = cleaned
+
 	task.Status = domain.StatusCancelled
 	e.emitEvent(ctx, task.ID, task.CurrentStageID, domain.EventTaskCancelled, "Task cancelled by user.", nil)
 	if err := e.store.SaveTask(ctx, task); err != nil {
@@ -554,7 +587,14 @@ func (e *PipelineEngine) runLoop(ctx context.Context, task *domain.Task) (*domai
 				}
 			}
 
-			r, err := resolvedAdapter.Invoke(ctx, domain.InvokeParams{
+			invokeCtx, invokeCancel := context.WithCancel(ctx)
+			e.setCancelFunc(task.ID, invokeCancel)
+			defer func() {
+				invokeCancel()
+				e.clearCancelFunc(task.ID)
+			}()
+
+			r, err := resolvedAdapter.Invoke(invokeCtx, domain.InvokeParams{
 				AgentName:           stage.Agent,
 				TaskDescription:     task.Description,
 				WorkingDir:          task.WorkingDir,
@@ -575,6 +615,10 @@ func (e *PipelineEngine) runLoop(ctx context.Context, task *domain.Task) (*domai
 				return nil, fmt.Errorf("adapter invoke: %w", err)
 			}
 			result = r
+
+			if invokeCtx.Err() == context.Canceled {
+				return e.doCancel(ctx, task)
+			}
 		}
 
 		// Resolve new artifacts via glob diff.

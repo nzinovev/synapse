@@ -418,7 +418,7 @@ func TestCancelTask(t *testing.T) {
 	}
 }
 
-func TestCancelRequiresAwaitingGate(t *testing.T) {
+func TestCancelRequiresCancellableStatus(t *testing.T) {
 	engine, _, tmpDir, cleanup := newTestEngine(t)
 	defer cleanup()
 

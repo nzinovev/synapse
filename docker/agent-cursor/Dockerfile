@@ -3,7 +3,7 @@ FROM ubuntu:24.04
 RUN apt-get update && apt-get install -y wget && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN useradd -m -u 1000 synapse
+RUN useradd -m -u 10000 synapse
 
 # Switch to non-root user
 USER synapse

@@ -6,10 +6,10 @@
 set -e
 
 echo "Building synapse/agent-claude image..."
-docker build -t synapse/agent-claude:latest -t synapse/agent-claude:0.1.0 docker/agent-claude/
+docker build -t synapse/agent-claude:latest -t synapse/agent-claude:0.1.0 agent-claude
 
 echo "Building synapse/agent-cursor image..."
-docker build -t synapse/agent-cursor:latest -t synapse/agent-cursor:0.1.0 docker/agent-cursor/
+docker build -t synapse/agent-cursor:latest -t synapse/agent-cursor:0.1.0 agent-cursor
 
 echo ""
 echo "Images built successfully:"

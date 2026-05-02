@@ -3,6 +3,7 @@ package domain
 // InvokeParams holds the parameters passed to an AgentAdapter.Invoke call.
 type InvokeParams struct {
 	AgentName           string
+	TaskID              string
 	TaskDescription     string
 	WorkingDir          string
 	ContextArtifacts    map[string][]string

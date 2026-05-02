@@ -556,6 +556,7 @@ func (e *PipelineEngine) runLoop(ctx context.Context, task *domain.Task) (*domai
 
 			r, err := resolvedAdapter.Invoke(ctx, domain.InvokeParams{
 				AgentName:           stage.Agent,
+				TaskID:              task.ID,
 				TaskDescription:     task.Description,
 				WorkingDir:          task.WorkingDir,
 				ContextArtifacts:    contextArtifacts,

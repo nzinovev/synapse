@@ -15,7 +15,9 @@ type RunnerParams struct {
 	WorkingDir    string
 	StageWorkdir  string
 	AgentName     string
-	SandboxConfig domain.DockerConfig
+	TaskID        string
+	StageID       string
+	PipelineName  string
+	PromptDir     string
 	EnvVars       map[string]string
-	PromptFiles   map[string]string
 }

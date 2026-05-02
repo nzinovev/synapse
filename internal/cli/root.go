@@ -62,8 +62,8 @@ func createEngine(ctx context.Context, cfg *domain.SynapseConfig, s *store.SQLit
 	return engine.NewPipelineEngineWithRegistry(s, deps.Registry, cfg.AdapterConfig, cfg.Adapter, cfg.PipelinesDir), nil
 }
 
-func createRunner(cfg *domain.SynapseConfig, deps *Dependencies) adapter.Runner {
-	if deps.Runner != nil {
+func CreateRunner(cfg *domain.SynapseConfig, deps *Dependencies) adapter.Runner {
+	if deps != nil && deps.Runner != nil {
 		return deps.Runner
 	}
 	switch cfg.AdapterConfig.SandboxMode {

@@ -57,6 +57,10 @@ func (c *ClaudeCliAdapter) Invoke(ctx context.Context, params domain.InvokeParam
 		WorkingDir:   params.WorkingDir,
 		StageWorkdir: params.StageWorkdir,
 		AgentName:    params.AgentName,
+		TaskID:       params.TaskID,
+		StageID:      params.StageID,
+		PipelineName: params.PipelineName,
+		PromptDir:    c.AgentPromptsDir,
 	})
 }
 

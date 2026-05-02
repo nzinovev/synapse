@@ -19,6 +19,7 @@ func newRunCmd(deps *Dependencies) *cobra.Command {
 	var adapterName string
 	var jsonOutput bool
 	var taskNumber string
+	var noSandbox bool
 
 	cmd := &cobra.Command{
 		Use:   "run <pipeline> [description]",
@@ -78,6 +79,13 @@ func newRunCmd(deps *Dependencies) *cobra.Command {
 			cfg, err := loadConfig()
 			if err != nil {
 				return err
+			}
+
+			// Handle --no-sandbox flag
+			if noSandbox {
+				printNoSandboxWarning()
+				time.Sleep(3 * time.Second)
+				cfg.AdapterConfig.SandboxMode = domain.SandboxHost
 			}
 
 			s, err := openStore(ctx, cfg)
@@ -148,7 +156,25 @@ func newRunCmd(deps *Dependencies) *cobra.Command {
 	cmd.Flags().StringVarP(&taskNumber, "task-number", "n", "", "Task number (required).")
 	cmd.Flags().StringVar(&adapterName, "adapter", "", "Agent adapter to use (e.g., claude_cli, cursor_cli). Defaults to global config.")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Machine-readable JSON output.")
+	cmd.Flags().BoolVar(&noSandbox, "no-sandbox", false, "Run agent directly on host without Docker sandbox (WARNING: reduces security)")
 	return cmd
+}
+
+func printNoSandboxWarning() {
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "╔══════════════════════════════════════════════════════════════════════════════╗")
+	fmt.Fprintln(os.Stderr, "║ WARNING: Running agent directly on host without Docker sandbox             ║")
+	fmt.Fprintln(os.Stderr, "║                                                                            ║")
+	fmt.Fprintln(os.Stderr, "║ This gives the agent full access to your machine including:                 ║")
+	fmt.Fprintln(os.Stderr, "║ • Your home directory and all its contents                                  ║")
+	fmt.Fprintln(os.Stderr, "║ • SSH keys, shell history, and environment variables                       ║")
+	fmt.Fprintln(os.Stderr, "║ • Full filesystem access                                                    ║")
+	fmt.Fprintln(os.Stderr, "║ Network connectivity to external services                                    ║")
+	fmt.Fprintln(os.Stderr, "║                                                                            ║")
+	fmt.Fprintln(os.Stderr, "║ For better security, use Docker containers (the default mode).              ║")
+	fmt.Fprintln(os.Stderr, "║                                                                            ║")
+	fmt.Fprintln(os.Stderr, "╚══════════════════════════════════════════════════════════════════════════════╝")
+	fmt.Fprintln(os.Stderr, "")
 }
 
 func printTask(task *domain.Task, asJSON bool) {

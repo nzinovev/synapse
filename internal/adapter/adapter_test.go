@@ -30,7 +30,7 @@ func TestAdapterRegistry(t *testing.T) {
 func TestRegistryNames(t *testing.T) {
 	registry := NewRegistry()
 	RegisterFake(registry)
-	RegisterClaudeCLI(registry)
+	RegisterClaudeCLI(registry, &HostRunner{})
 
 	names := registry.Names()
 	if len(names) != 2 {

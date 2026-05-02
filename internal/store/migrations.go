@@ -91,6 +91,14 @@ CREATE INDEX IF NOT EXISTS idx_queue_pending ON task_queue(status) WHERE status 
 		Version: 4,
 		Up:      `ALTER TABLE stage_runs ADD COLUMN adapter TEXT NOT NULL DEFAULT '';`,
 	},
+	{
+		Version: 5,
+		Up:      `ALTER TABLE tasks ADD COLUMN sandbox_mode TEXT NOT NULL DEFAULT 'docker';`,
+	},
+	{
+		Version: 6,
+		Up:      `ALTER TABLE stage_runs ADD COLUMN container_info_json TEXT DEFAULT NULL;`,
+	},
 }
 
 func RunMigrations(ctx context.Context, db *sql.DB) error {

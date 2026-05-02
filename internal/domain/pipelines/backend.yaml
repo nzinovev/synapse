@@ -10,7 +10,7 @@ stages:
     agent: adr-architect
     gate: human_approval
     produces_glob: "docs/adr/*.md"
-    model: medium
+    model: high
 
   - id: implement
     agent: feature-implementer

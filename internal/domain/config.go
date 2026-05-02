@@ -14,6 +14,8 @@ type AdapterConfig struct {
 	CLIProfile      string            `json:"cli_profile"`
 	CursorExtraArgs []string          `json:"cursor_extra_args"`
 	ModelTiers      map[string]string `json:"model_tiers"`
+	SandboxMode     SandboxMode       `json:"sandbox_mode"`
+	DockerConfig    DockerConfig      `json:"docker_config"`
 }
 
 type SynapseConfig struct {
@@ -50,6 +52,8 @@ func DefaultSynapseConfig() SynapseConfig {
 			AgentBinary:  "agent",
 			CLIProfile:   "claude",
 			ModelTiers:   defaultModelTiers(),
+			SandboxMode:  SandboxDocker,
+			DockerConfig: DefaultDockerConfig(),
 		},
 		DBPath:      defaultDBPath(),
 		WorkerCount: 2,
@@ -148,6 +152,30 @@ func applyDefaults(cfg *SynapseConfig) {
 		} else {
 			cfg.AdapterConfig.ModelTiers = defaultModelTiers()
 		}
+	}
+	if cfg.AdapterConfig.SandboxMode == "" {
+		cfg.AdapterConfig.SandboxMode = SandboxDocker
+	}
+	if cfg.AdapterConfig.DockerConfig.NetworkPolicy == "" {
+		cfg.AdapterConfig.DockerConfig.NetworkPolicy = NetworkRestricted
+	}
+	if cfg.AdapterConfig.DockerConfig.CPULimit == 0 {
+		cfg.AdapterConfig.DockerConfig.CPULimit = 2.0
+	}
+	if cfg.AdapterConfig.DockerConfig.MemoryLimitMB == 0 {
+		cfg.AdapterConfig.DockerConfig.MemoryLimitMB = 2048
+	}
+	if cfg.AdapterConfig.DockerConfig.TimeoutSeconds == 0 {
+		cfg.AdapterConfig.DockerConfig.TimeoutSeconds = 1200
+	}
+	if cfg.AdapterConfig.DockerConfig.SourceMode == "" {
+		cfg.AdapterConfig.DockerConfig.SourceMode = SourceMount
+	}
+	if cfg.AdapterConfig.DockerConfig.ContainerMountPath == "" {
+		cfg.AdapterConfig.DockerConfig.ContainerMountPath = "/mount"
+	}
+	if len(cfg.AdapterConfig.DockerConfig.AllowedEndpoints) == 0 {
+		cfg.AdapterConfig.DockerConfig.AllowedEndpoints = []string{"api.anthropic.com", "api.openai.com", "api.z.ai"}
 	}
 }
 

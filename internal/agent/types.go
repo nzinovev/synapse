@@ -61,6 +61,7 @@ type RunInput struct {
 	WorkspacePath  string            `json:"workspace_path"`
 	StageWorkdir   string            `json:"stage_workdir,omitempty"`
 	StageID        string            `json:"stage_id"`
+	AgentName      string            `json:"agent_name,omitempty"`
 	PipelineName   string            `json:"pipeline_name"`
 	Gate           domain.Gate       `json:"gate"`
 	PRIndex        int               `json:"pr_index"`

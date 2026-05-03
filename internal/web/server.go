@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/nzinovev/synapse/internal/adapter"
+	"github.com/nzinovev/synapse/internal/agent"
 	"github.com/nzinovev/synapse/internal/domain"
 	"github.com/nzinovev/synapse/internal/engine"
 	"github.com/nzinovev/synapse/internal/queue"
@@ -105,7 +106,7 @@ func (s *Server) resolvePipeline(task *domain.Task) *domain.Pipeline {
 }
 
 // NewServerFromConfig is a convenience that wires up all dependencies from a config.
-func NewServerFromConfig(cfg *domain.SynapseConfig, registry *adapter.AdapterRegistry) (*Server, error) {
+func NewServerFromConfig(cfg *domain.SynapseConfig, registry *adapter.AdapterRegistry, agentRegistry *agent.AgentRegistry) (*Server, error) {
 	ctx := context.Background()
 
 	s, err := store.NewSQLiteStore(ctx, cfg.DBPath)
@@ -113,7 +114,10 @@ func NewServerFromConfig(cfg *domain.SynapseConfig, registry *adapter.AdapterReg
 		return nil, fmt.Errorf("open store: %w", err)
 	}
 
-	eng := engine.NewPipelineEngineWithRegistry(s, registry, cfg.AdapterConfig, cfg.Adapter, cfg.PipelinesDir)
+	eng := engine.NewPipelineEngineWithAgentRegistry(s, agentRegistry, cfg.AdapterConfig, cfg.Adapter, cfg.PipelinesDir)
+	if agentRegistry == nil {
+		eng = engine.NewPipelineEngineWithRegistry(s, registry, cfg.AdapterConfig, cfg.Adapter, cfg.PipelinesDir)
+	}
 	q := queue.NewSQLiteQueueStore(s.DB())
 
 	adapterNames := registry.SelectableNames()

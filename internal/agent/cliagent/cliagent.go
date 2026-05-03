@@ -3,6 +3,8 @@ package cliagent
 import (
 	"context"
 	"fmt"
+	"os"
+	"regexp"
 
 	"github.com/nzinovev/synapse/internal/adapter"
 	"github.com/nzinovev/synapse/internal/agent"
@@ -38,8 +40,13 @@ func (a *CLIAgent) Name() string {
 }
 
 func (a *CLIAgent) Run(ctx context.Context, input agent.RunInput) (agent.RunResult, error) {
+	agentName := input.AgentName
+	if agentName == "" {
+		agentName = a.agentName
+	}
+
 	params := domain.InvokeParams{
-		AgentName:           a.agentName,
+		AgentName:           agentName,
 		TaskDescription:     input.Goal,
 		WorkingDir:          input.WorkspacePath,
 		ContextArtifacts:    contextArtifacts(input.PriorOutputs),
@@ -66,14 +73,16 @@ func (a *CLIAgent) Run(ctx context.Context, input agent.RunInput) (agent.RunResu
 		status = agent.StatusCompleted
 	}
 
-	return agent.RunResult{
+	runResult := agent.RunResult{
 		SchemaVersion:   agent.SchemaVersion,
 		Status:          status,
 		Artifacts:       artifactRefs(input.StageID, result.ArtifactsCreated),
+		Verdict:         verdictFromArtifacts(result.ArtifactsCreated),
 		Stdout:          result.Stdout,
 		Stderr:          result.Stderr,
 		DurationSeconds: result.DurationSeconds,
-	}, nil
+	}
+	return runResult, nil
 }
 
 func Register(registry *agent.AgentRegistry, agentName string, factory func(domain.AdapterConfig) (adapter.AgentAdapter, error)) error {
@@ -156,4 +165,20 @@ func artifactRefs(stageID string, paths []string) []agent.ArtifactRef {
 		})
 	}
 	return artifacts
+}
+
+var verdictRe = regexp.MustCompile(`(?s)\*\*Verdict:\*\*\s*(APPROVED|NEEDS FIXES|BLOCKED)`)
+
+func verdictFromArtifacts(paths []string) agent.Verdict {
+	for i := len(paths) - 1; i >= 0; i-- {
+		data, err := os.ReadFile(paths[i])
+		if err != nil {
+			continue
+		}
+		match := verdictRe.FindStringSubmatch(string(data))
+		if len(match) >= 2 {
+			return agent.Verdict(match[1])
+		}
+	}
+	return ""
 }

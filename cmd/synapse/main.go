@@ -8,6 +8,7 @@ import (
 	"github.com/nzinovev/synapse/internal/agent"
 	"github.com/nzinovev/synapse/internal/agent/cliagent"
 	"github.com/nzinovev/synapse/internal/cli"
+	"github.com/nzinovev/synapse/internal/domain"
 )
 
 var version = "dev"
@@ -19,6 +20,12 @@ func main() {
 	adapter.RegisterCursorCLI(registry)
 
 	agentRegistry := agent.NewAgentRegistry()
+	if err := cliagent.Register(agentRegistry, "fake", func(cfg domain.AdapterConfig) (adapter.AgentAdapter, error) {
+		return &adapter.FakeAdapter{}, nil
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 	if err := cliagent.RegisterClaudeCLI(agentRegistry); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

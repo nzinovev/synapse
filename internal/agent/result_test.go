@@ -27,6 +27,7 @@ func TestReadStageResultRoundTrip(t *testing.T) {
 		Metadata: map[string]string{"source": "test"},
 	}
 	writeResultJSON(t, stageDir, want)
+	want.FromFile = true
 
 	got, err := agent.ReadStageResult(stageDir)
 	if err != nil {

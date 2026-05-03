@@ -31,7 +31,7 @@ func newWebCmd(deps *Dependencies) *cobra.Command {
 				cfg.Port = port
 			}
 
-			srv, err := web.NewServerFromConfig(cfg, deps.Registry)
+			srv, err := web.NewServerFromConfig(cfg, deps.Registry, deps.AgentRegistry)
 			if err != nil {
 				return fmt.Errorf("create server: %w", err)
 			}

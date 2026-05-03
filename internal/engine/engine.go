@@ -3,13 +3,13 @@ package engine
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sync"
 	"time"
 
 	"github.com/nzinovev/synapse/internal/adapter"
+	"github.com/nzinovev/synapse/internal/agent"
 	"github.com/nzinovev/synapse/internal/domain"
 	"github.com/nzinovev/synapse/internal/store"
 )
@@ -20,11 +20,13 @@ type PipelineEngine struct {
 	store          store.TaskStore
 	adapter        adapter.AgentAdapter // legacy: single fixed adapter
 	registry       *adapter.AdapterRegistry
+	agentRegistry  *agent.AgentRegistry
 	adapterConfig  domain.AdapterConfig
 	defaultAdapter string
 	pipelinesDir   string
 	pipeline       *domain.Pipeline
 	taskMutexes    sync.Map
+	agentCache     sync.Map // map[string]agent.Agent
 	adapterCache   sync.Map // map[string]adapter.AgentAdapter
 }
 
@@ -60,8 +62,63 @@ func NewPipelineEngineWithRegistry(
 	}
 }
 
+func NewPipelineEngineWithAgentRegistry(
+	s store.TaskStore,
+	r *agent.AgentRegistry,
+	cfg domain.AdapterConfig,
+	defaultAdapter string,
+	pipelinesDir string,
+) *PipelineEngine {
+	return &PipelineEngine{
+		store:          s,
+		agentRegistry:  r,
+		adapterConfig:  cfg,
+		defaultAdapter: defaultAdapter,
+		pipelinesDir:   pipelinesDir,
+	}
+}
+
+func (e *PipelineEngine) resolveAgent(task *domain.Task) (agent.Agent, string, error) {
+	adapterName := task.Adapter
+	if adapterName == "" {
+		adapterName = e.defaultAdapter
+	}
+
+	if e.agentRegistry == nil && e.registry == nil {
+		if e.adapter == nil {
+			return nil, "", fmt.Errorf("no agent adapter configured")
+		}
+		name := e.adapter.Name()
+		return adapterBackedAgent{name: name, inner: e.adapter}, name, nil
+	}
+
+	if cached, ok := e.agentCache.Load(adapterName); ok {
+		return cached.(agent.Agent), adapterName, nil
+	}
+
+	if e.agentRegistry != nil {
+		a, err := e.agentRegistry.Create(adapterName, e.adapterConfig)
+		if err != nil {
+			return nil, "", fmt.Errorf("resolve agent %q: %w", adapterName, err)
+		}
+		e.agentCache.Store(adapterName, a)
+		return a, adapterName, nil
+	}
+
+	a, err := e.registry.Create(adapterName, e.adapterConfig)
+	if err != nil {
+		return nil, "", fmt.Errorf("resolve adapter %q: %w", adapterName, err)
+	}
+	wrapped := adapterBackedAgent{name: adapterName, inner: a}
+	e.agentCache.Store(adapterName, wrapped)
+	return wrapped, adapterName, nil
+}
+
 func (e *PipelineEngine) resolveAdapter(task *domain.Task) (adapter.AgentAdapter, string, error) {
 	if e.registry == nil {
+		if e.adapter == nil {
+			return nil, "", fmt.Errorf("no agent adapter configured")
+		}
 		return e.adapter, e.adapter.Name(), nil
 	}
 
@@ -486,20 +543,20 @@ func (e *PipelineEngine) runLoop(ctx context.Context, task *domain.Task) (*domai
 		}
 
 		// Gather context artifacts from prior stages.
-		contextArtifacts := make(map[string][]string)
+		var priorOutputs []agent.PriorOutput
 		for _, prevStage := range pipeline.Stages {
 			if prevStage.ID == stage.ID {
 				break
 			}
 			if paths, ok := task.Artifacts[prevStage.ID]; ok && len(paths) > 0 {
-				contextArtifacts[prevStage.ID] = paths
+				priorOutputs = append(priorOutputs, priorOutput(prevStage.ID, paths))
 			}
 		}
 
 		// For fix stage, also include review artifacts.
 		if stage.ID == "fix" {
 			if reviewPaths, ok := task.Artifacts["review"]; ok && len(reviewPaths) > 0 {
-				contextArtifacts["review"] = reviewPaths
+				priorOutputs = append(priorOutputs, priorOutput("review", reviewPaths))
 			}
 		}
 
@@ -513,7 +570,7 @@ func (e *PipelineEngine) runLoop(ctx context.Context, task *domain.Task) (*domai
 				}
 			}
 			if len(handoffPaths) > 0 {
-				contextArtifacts["implement_handoff"] = handoffPaths
+				priorOutputs = append(priorOutputs, priorOutput("implement_handoff", handoffPaths))
 			}
 		}
 
@@ -525,18 +582,15 @@ func (e *PipelineEngine) runLoop(ctx context.Context, task *domain.Task) (*domai
 			beforeGlob = globFiles(task.WorkingDir, stage.ProducesGlob)
 		}
 
-		// Invoke adapter (or use null result for done stage).
-		var result domain.AgentResult
+		// Invoke agent (or use null result for done stage).
+		var result agent.RunResult
 		if stage.Agent == "" || stage.Agent == "null" {
-			exitCode := 0
-			result = domain.AgentResult{
-				Success:          true,
-				ExitCode:         &exitCode,
-				DurationSeconds:  0,
-				ArtifactsCreated: nil,
+			result = agent.RunResult{
+				SchemaVersion: agent.SchemaVersion,
+				Status:        agent.StatusCompleted,
 			}
 		} else {
-			resolvedAdapter, resolvedName, err := e.resolveAdapter(task)
+			resolvedAgent, resolvedName, err := e.resolveAgent(task)
 			if err != nil {
 				return nil, err
 			}
@@ -554,27 +608,36 @@ func (e *PipelineEngine) runLoop(ctx context.Context, task *domain.Task) (*domai
 				}
 			}
 
-			r, err := resolvedAdapter.Invoke(ctx, domain.InvokeParams{
-				AgentName:           stage.Agent,
-				TaskDescription:     task.Description,
-				WorkingDir:          task.WorkingDir,
-				ContextArtifacts:    contextArtifacts,
-				RejectionFeedback:   rejectionFeedback,
-				OpenQuestionAnswers: openQuestionAnswers,
-				StageWorkdir:        stageWorkdir,
-				StageID:             stage.ID,
-				Gate:                stage.Gate,
-				PipelineName:        task.PipelineName,
-				FixCycleCount:       task.FixCycleCount,
-				PRIndex:             task.PRIndex,
-				PreviousStdout:      previousStdout,
-				PreviousStderr:      previousStderr,
-				Model:               resolvedModel,
+			r, err := resolvedAgent.Run(ctx, agent.RunInput{
+				SchemaVersion:  agent.SchemaVersion,
+				TaskID:         task.ID,
+				Goal:           task.Description,
+				WorkspacePath:  task.WorkingDir,
+				StageWorkdir:   stageWorkdir,
+				StageID:        stage.ID,
+				AgentName:      stage.Agent,
+				PipelineName:   task.PipelineName,
+				Gate:           stage.Gate,
+				PRIndex:        task.PRIndex,
+				FixCycleCount:  task.FixCycleCount,
+				PriorOutputs:   priorOutputs,
+				Feedback:       runFeedback(rejectionFeedback, openQuestionAnswers),
+				PreviousStdout: previousStdout,
+				PreviousStderr: previousStderr,
+				Model:          resolvedModel,
 			})
 			if err != nil {
-				return nil, fmt.Errorf("adapter invoke: %w", err)
+				return nil, fmt.Errorf("agent run: %w", err)
 			}
 			result = r
+		}
+
+		fileResult, err := agent.ReadStageResult(stageWorkdir)
+		if err != nil {
+			return nil, err
+		}
+		if fileResult != nil {
+			result = mergeRunResult(result, *fileResult)
 		}
 
 		// Resolve new artifacts via glob diff.
@@ -583,7 +646,8 @@ func (e *PipelineEngine) runLoop(ctx context.Context, task *domain.Task) (*domai
 			afterGlob := globFiles(task.WorkingDir, stage.ProducesGlob)
 			newArtifacts = diffGlobResults(beforeGlob, afterGlob)
 		} else {
-			for _, p := range result.ArtifactsCreated {
+			for _, artifact := range result.Artifacts {
+				p := artifact.Path
 				abs, err := filepath.Abs(p)
 				if err != nil {
 					abs = p
@@ -595,7 +659,7 @@ func (e *PipelineEngine) runLoop(ctx context.Context, task *domain.Task) (*domai
 		// Update the StageRun.
 		finishedAt := time.Now().UTC()
 		stageRun.FinishedAt = &finishedAt
-		stageRun.AgentResult = &result
+		stageRun.AgentResult = domainAgentResult(result)
 		// Update the last run in the task's runs slice.
 		task.Runs[len(task.Runs)-1] = stageRun
 
@@ -603,11 +667,11 @@ func (e *PipelineEngine) runLoop(ctx context.Context, task *domain.Task) (*domai
 			task.Artifacts[stage.ID] = newArtifacts
 		}
 
-		if !result.Success {
+		if result.Status == agent.StatusFailed {
 			task.Status = domain.StatusBlocked
 			e.emitEvent(ctx, task.ID, stage.ID, domain.EventStageFailed,
-				fmt.Sprintf("Stage %q failed (exit_code=%v)", stage.ID, result.ExitCode),
-				map[string]any{"exit_code": result.ExitCode})
+				fmt.Sprintf("Stage %q failed", stage.ID),
+				nil)
 			e.store.SaveTask(ctx, task)
 			return task, nil
 		}
@@ -617,7 +681,11 @@ func (e *PipelineEngine) runLoop(ctx context.Context, task *domain.Task) (*domai
 			map[string]any{"artifacts": newArtifacts})
 
 		// Evaluate gate.
-		terminal, err := e.evaluateGate(ctx, task, pipeline, stage, newArtifacts)
+		outcome, err := evaluateGate(*stage, result, newArtifacts)
+		if err != nil {
+			return nil, err
+		}
+		terminal, err := e.applyGateOutcome(ctx, task, pipeline, stage, outcome)
 		if err != nil {
 			return nil, err
 		}
@@ -627,17 +695,12 @@ func (e *PipelineEngine) runLoop(ctx context.Context, task *domain.Task) (*domai
 	}
 }
 
-// Gate evaluation
-
-func (e *PipelineEngine) evaluateGate(ctx context.Context, task *domain.Task, pipeline *domain.Pipeline, stage *domain.Stage, newArtifacts []string) (terminal bool, err error) {
-	switch stage.Gate {
-	case domain.GateAuto:
+func (e *PipelineEngine) applyGateOutcome(ctx context.Context, task *domain.Task, pipeline *domain.Pipeline, stage *domain.Stage, outcome GateOutcome) (terminal bool, err error) {
+	switch outcome.Decision {
+	case gateProceed:
 		return e.continueAfterAutoGate(ctx, task, pipeline, stage)
 
-	case domain.GateAutoIfClean:
-		if ArtifactsAllowAutoIfClean(newArtifacts) {
-			return e.continueAfterAutoGate(ctx, task, pipeline, stage)
-		}
+	case gateAwaitAutoIfClean:
 		task.Status = domain.StatusAwaitingGate
 		e.emitEvent(ctx, task.ID, stage.ID, domain.EventGateAwaiting,
 			fmt.Sprintf("Waiting for human approval at stage %q (auto_if_clean: open questions or QUESTIONS.md)", stage.ID),
@@ -645,8 +708,11 @@ func (e *PipelineEngine) evaluateGate(ctx context.Context, task *domain.Task, pi
 		e.store.SaveTask(ctx, task)
 		return true, nil
 
-	case domain.GateAutoOnApproval:
-		return e.evaluateAutoOnApproval(ctx, task, pipeline, stage)
+	case gateApproved:
+		return e.applyApprovedReview(ctx, task, pipeline, stage)
+
+	case gateNeedsFixes:
+		return e.applyNeedsFixesReview(ctx, task, pipeline, stage)
 
 	default:
 		// human_approval or human_final: stop and await gate.
@@ -659,73 +725,60 @@ func (e *PipelineEngine) evaluateGate(ctx context.Context, task *domain.Task, pi
 	}
 }
 
-func (e *PipelineEngine) evaluateAutoOnApproval(ctx context.Context, task *domain.Task, pipeline *domain.Pipeline, stage *domain.Stage) (bool, error) {
-	verdict := e.parseReviewerVerdict(stage.ID, task)
-
-	switch verdict {
-	case "APPROVED":
-		handoffRe := regexp.MustCompile(`/handoff/.*-pr\d+\.md$`)
-		hasHandoff := false
-		for _, p := range task.Artifacts["implement"] {
-			if handoffRe.MatchString(p) {
-				hasHandoff = true
-				break
-			}
+func (e *PipelineEngine) applyApprovedReview(ctx context.Context, task *domain.Task, pipeline *domain.Pipeline, stage *domain.Stage) (bool, error) {
+	handoffRe := regexp.MustCompile(`/handoff/.*-pr\d+\.md$`)
+	hasHandoff := false
+	for _, p := range task.Artifacts["implement"] {
+		if handoffRe.MatchString(p) {
+			hasHandoff = true
+			break
 		}
+	}
 
-		if hasHandoff {
-			task.PRIndex++
-			task.Artifacts["implement"] = nil
-			implementStage, err := pipeline.GetStage("implement")
-			if err != nil {
-				return false, fmt.Errorf("get implement stage: %w", err)
-			}
-			task.CurrentStageID = implementStage.ID
-			task.Status = domain.StatusRunning
-			e.emitEvent(ctx, task.ID, stage.ID, domain.EventStageStarted,
-				fmt.Sprintf("PR %d approved — starting implement for PR %d", task.PRIndex-1, task.PRIndex),
-				map[string]any{"pr_index": task.PRIndex})
-			e.store.SaveTask(ctx, task)
-			return false, nil
-		}
-
-		doneStage, err := pipeline.GetStage("done")
+	if hasHandoff {
+		task.PRIndex++
+		task.Artifacts["implement"] = nil
+		implementStage, err := pipeline.GetStage("implement")
 		if err != nil {
-			return false, fmt.Errorf("get done stage: %w", err)
+			return false, fmt.Errorf("get implement stage: %w", err)
 		}
-		task.CurrentStageID = doneStage.ID
+		task.CurrentStageID = implementStage.ID
 		task.Status = domain.StatusRunning
+		e.emitEvent(ctx, task.ID, stage.ID, domain.EventStageStarted,
+			fmt.Sprintf("PR %d approved — starting implement for PR %d", task.PRIndex-1, task.PRIndex),
+			map[string]any{"pr_index": task.PRIndex})
 		e.store.SaveTask(ctx, task)
 		return false, nil
+	}
 
-	case "NEEDS FIXES":
-		if task.FixCycleCount >= MaxFixCycles {
-			task.Status = domain.StatusEscalated
-			e.emitEvent(ctx, task.ID, stage.ID, domain.EventStageFailed,
-				fmt.Sprintf("Max fix cycles (%d) reached — escalated, human intervention required", MaxFixCycles),
-				map[string]any{"reason": "max_fix_cycles_exceeded"})
-			e.store.SaveTask(ctx, task)
-			return true, nil
-		}
-		task.FixCycleCount++
-		fixStage, err := pipeline.GetStage("fix")
-		if err != nil {
-			return false, fmt.Errorf("get fix stage: %w", err)
-		}
-		task.CurrentStageID = fixStage.ID
-		task.Status = domain.StatusRunning
-		e.store.SaveTask(ctx, task)
-		return false, nil
+	doneStage, err := pipeline.GetStage("done")
+	if err != nil {
+		return false, fmt.Errorf("get done stage: %w", err)
+	}
+	task.CurrentStageID = doneStage.ID
+	task.Status = domain.StatusRunning
+	e.store.SaveTask(ctx, task)
+	return false, nil
+}
 
-	default:
-		// BLOCKED or parse failure
-		task.Status = domain.StatusAwaitingGate
-		e.emitEvent(ctx, task.ID, stage.ID, domain.EventGateAwaiting,
-			"Reviewer verdict BLOCKED (or unreadable) — awaiting human",
-			map[string]any{"gate": "auto_on_approval", "verdict": verdict})
+func (e *PipelineEngine) applyNeedsFixesReview(ctx context.Context, task *domain.Task, pipeline *domain.Pipeline, stage *domain.Stage) (bool, error) {
+	if task.FixCycleCount >= MaxFixCycles {
+		task.Status = domain.StatusEscalated
+		e.emitEvent(ctx, task.ID, stage.ID, domain.EventStageFailed,
+			fmt.Sprintf("Max fix cycles (%d) reached — escalated, human intervention required", MaxFixCycles),
+			map[string]any{"reason": "max_fix_cycles_exceeded"})
 		e.store.SaveTask(ctx, task)
 		return true, nil
 	}
+	task.FixCycleCount++
+	fixStage, err := pipeline.GetStage("fix")
+	if err != nil {
+		return false, fmt.Errorf("get fix stage: %w", err)
+	}
+	task.CurrentStageID = fixStage.ID
+	task.Status = domain.StatusRunning
+	e.store.SaveTask(ctx, task)
+	return false, nil
 }
 
 func (e *PipelineEngine) continueAfterAutoGate(ctx context.Context, task *domain.Task, pipeline *domain.Pipeline, stage *domain.Stage) (bool, error) {
@@ -760,19 +813,6 @@ func (e *PipelineEngine) continueAfterAutoGate(ctx context.Context, task *domain
 	task.Status = domain.StatusRunning
 	e.store.SaveTask(ctx, task)
 	return false, nil
-}
-
-func (e *PipelineEngine) parseReviewerVerdict(stageID string, task *domain.Task) string {
-	artifactPaths := task.Artifacts[stageID]
-	if len(artifactPaths) == 0 {
-		return ""
-	}
-	reviewPath := artifactPaths[len(artifactPaths)-1]
-	data, err := os.ReadFile(reviewPath)
-	if err != nil {
-		return ""
-	}
-	return ParseVerdict(string(data))
 }
 
 // Helpers

@@ -22,6 +22,7 @@ type RunResult struct {
 	DurationSeconds float64           `json:"duration_seconds"`
 	Usage           *ModelUsage       `json:"usage,omitempty"`
 	Metadata        map[string]string `json:"metadata,omitempty"`
+	FromFile        bool              `json:"-"`
 }
 
 func ReadStageResult(stageDir string) (*RunResult, error) {
@@ -42,5 +43,6 @@ func ReadStageResult(stageDir string) (*RunResult, error) {
 		return nil, fmt.Errorf("parse stage result %s: unknown schema_version %q", path, result.SchemaVersion)
 	}
 
+	result.FromFile = true
 	return &result, nil
 }

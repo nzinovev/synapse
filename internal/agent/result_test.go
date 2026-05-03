@@ -25,6 +25,7 @@ func TestReadStageResultRoundTrip(t *testing.T) {
 		},
 		Verdict:  agent.VerdictBlocked,
 		Metadata: map[string]string{"source": "test"},
+		FromFile: true,
 	}
 	writeResultJSON(t, stageDir, want)
 

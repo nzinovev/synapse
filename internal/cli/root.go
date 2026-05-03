@@ -60,7 +60,7 @@ func openStore(ctx context.Context, cfg *domain.SynapseConfig) (*store.SQLiteSto
 }
 
 func createEngine(ctx context.Context, cfg *domain.SynapseConfig, s *store.SQLiteStore, deps *Dependencies) (*engine.PipelineEngine, error) {
-	return engine.NewPipelineEngineWithRegistry(s, deps.Registry, cfg.AdapterConfig, cfg.Adapter, cfg.PipelinesDir), nil
+	return engine.NewPipelineEngineWithAgents(s, deps.AgentRegistry, deps.Registry, cfg.AdapterConfig, cfg.Adapter, cfg.PipelinesDir), nil
 }
 
 func validateAdapterName(deps *Dependencies, adapterName string) error {

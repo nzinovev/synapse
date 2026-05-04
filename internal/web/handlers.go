@@ -259,8 +259,8 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Task not found", http.StatusNotFound)
 		return
 	}
-	if task.Status != domain.StatusAwaitingGate {
-		http.Error(w, fmt.Sprintf("Task is not awaiting a gate (status=%s)", task.Status), http.StatusBadRequest)
+	if task.Status != domain.StatusAwaitingGate && task.Status != domain.StatusRunning {
+		http.Error(w, fmt.Sprintf("Task is not cancellable (status=%s)", task.Status), http.StatusBadRequest)
 		return
 	}
 

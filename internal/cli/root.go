@@ -34,6 +34,7 @@ func NewRootCmd(deps *Dependencies) *cobra.Command {
 		newRejectCmd(deps),
 		newAnswerCmd(deps),
 		newRetryCmd(deps),
+		newCancelCmd(deps),
 		newListPipelinesCmd(deps),
 		newShowPipelineCmd(deps),
 		newWebCmd(deps),

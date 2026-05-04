@@ -150,6 +150,22 @@ func RunCLICommand(ctx context.Context, cmd []string, workingDir, stageWorkdir s
 		}
 	}
 
+	if cmdCtx.Err() == context.Canceled {
+		stdoutStr := truncateOutput(stdout.String(), maxOutputBytes)
+		stderrStr := truncateOutput(stderr.String()+"\n[SYNAPSE: agent cancelled — process killed]", maxOutputBytes)
+		os.WriteFile(filepath.Join(stageWorkdir, "stdout.log"), []byte(stdoutStr), 0o644)
+		os.WriteFile(filepath.Join(stageWorkdir, "stderr.log"), []byte(stderrStr), 0o644)
+		log.Printf("subprocess cancelled exe=%s cwd=%s duration_s=%.2f", exe, workingDir, duration)
+		return domain.AgentResult{
+			Success:          false,
+			Stdout:           stdoutStr,
+			Stderr:           stderrStr,
+			ArtifactsCreated: nil,
+			DurationSeconds:  duration,
+			ExitCode:         nil,
+		}
+	}
+
 	stdoutStr := truncateOutput(stdout.String(), maxOutputBytes)
 	stderrStr := truncateOutput(stderr.String(), maxOutputBytes)
 

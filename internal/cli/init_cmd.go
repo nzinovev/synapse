@@ -30,10 +30,10 @@ func newInitCmd() *cobra.Command {
 
 			reader := bufio.NewReader(cmd.InOrStdin())
 
-			adapterChoice := prompt(reader, "Default adapter [claude_cli/cursor_cli/fake]", "fake")
+			adapterChoice := prompt(reader, "Default adapter [claude_cli/cursor_cli]", "claude_cli")
 			adapterChoice = strings.ToLower(strings.TrimSpace(adapterChoice))
-			if adapterChoice != "claude_cli" && adapterChoice != "cursor_cli" && adapterChoice != "fake" {
-				return fmt.Errorf("unknown adapter %q. Choose claude_cli, cursor_cli, or fake", adapterChoice)
+			if adapterChoice != "claude_cli" && adapterChoice != "cursor_cli" {
+				return fmt.Errorf("unknown adapter %q. Choose claude_cli or cursor_cli", adapterChoice)
 			}
 
 			claudeBinary := prompt(reader, "Path to claude binary", "claude")

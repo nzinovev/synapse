@@ -11,13 +11,14 @@ import (
 	"time"
 
 	"github.com/nzinovev/synapse/internal/adapter"
+	"github.com/nzinovev/synapse/internal/agent"
 	"github.com/nzinovev/synapse/internal/domain"
 	"github.com/nzinovev/synapse/internal/engine"
 	"github.com/nzinovev/synapse/internal/store"
 	"github.com/spf13/cobra"
 )
 
-func setupTestEnv(t *testing.T) (string, *adapter.AdapterRegistry, func()) {
+func setupTestEnv(t *testing.T) (string, *Dependencies, func()) {
 	t.Helper()
 
 	tmpDir := t.TempDir()
@@ -25,7 +26,6 @@ func setupTestEnv(t *testing.T) (string, *adapter.AdapterRegistry, func()) {
 	os.MkdirAll(hubDir, 0o755)
 
 	cfg := domain.DefaultSynapseConfig()
-	cfg.Adapter = "fake"
 	cfg.DBPath = filepath.Join(hubDir, "synapse.db")
 	cfg.PipelinesDir = ""
 
@@ -33,7 +33,13 @@ func setupTestEnv(t *testing.T) (string, *adapter.AdapterRegistry, func()) {
 	os.WriteFile(filepath.Join(hubDir, "config.json"), data, 0o644)
 
 	registry := adapter.NewRegistry()
-	adapter.RegisterFake(registry)
+	agentReg := agent.NewAgentRegistry()
+	for _, name := range []string{"spec-writer", "adr-architect", "feature-implementer", "spec-reviewer", "fix-implementer"} {
+		n := name
+		agentReg.Register(n, func(cfg domain.AdapterConfig) (agent.Agent, error) {
+			return &agent.MockAgent{}, nil
+		})
+	}
 
 	origHome := os.Getenv("HOME")
 	os.Setenv("HOME", tmpDir)
@@ -42,11 +48,11 @@ func setupTestEnv(t *testing.T) (string, *adapter.AdapterRegistry, func()) {
 		os.Setenv("HOME", origHome)
 	}
 
-	return hubDir, registry, cleanup
+	deps := &Dependencies{Registry: registry, AgentRegistry: agentReg}
+	return hubDir, deps, cleanup
 }
 
-func newTestRootCmd(registry *adapter.AdapterRegistry) *cobra.Command {
-	deps := &Dependencies{Registry: registry}
+func newTestRootCmd(deps *Dependencies) *cobra.Command {
 	return NewRootCmd(deps)
 }
 
@@ -73,10 +79,10 @@ func executeCommand(root *cobra.Command, args ...string) (string, error) {
 }
 
 func TestRootCommand_Help(t *testing.T) {
-	_, registry, cleanup := setupTestEnv(t)
+	_, deps, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	root := newTestRootCmd(registry)
+	root := newTestRootCmd(deps)
 	output, err := executeCommand(root, "--help")
 	if err != nil {
 		t.Fatalf("--help should not error: %v", err)
@@ -91,10 +97,10 @@ func TestRootCommand_Help(t *testing.T) {
 }
 
 func TestListPipelinesCmd(t *testing.T) {
-	_, registry, cleanup := setupTestEnv(t)
+	_, deps, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	root := newTestRootCmd(registry)
+	root := newTestRootCmd(deps)
 	output, err := executeCommand(root, "list-pipelines")
 	if err != nil {
 		t.Fatalf("list-pipelines should not error: %v", err)
@@ -106,10 +112,10 @@ func TestListPipelinesCmd(t *testing.T) {
 }
 
 func TestShowPipelineCmd(t *testing.T) {
-	_, registry, cleanup := setupTestEnv(t)
+	_, deps, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	root := newTestRootCmd(registry)
+	root := newTestRootCmd(deps)
 	output, err := executeCommand(root, "show-pipeline", "backend")
 	if err != nil {
 		t.Fatalf("show-pipeline should not error: %v", err)
@@ -121,10 +127,10 @@ func TestShowPipelineCmd(t *testing.T) {
 }
 
 func TestShowPipelineCmd_NotFound(t *testing.T) {
-	_, registry, cleanup := setupTestEnv(t)
+	_, deps, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	root := newTestRootCmd(registry)
+	root := newTestRootCmd(deps)
 	_, err := executeCommand(root, "show-pipeline", "nonexistent")
 	if err == nil {
 		t.Fatal("show-pipeline with nonexistent name should error")
@@ -132,10 +138,10 @@ func TestShowPipelineCmd_NotFound(t *testing.T) {
 }
 
 func TestStatusCmd_NoTasks(t *testing.T) {
-	_, registry, cleanup := setupTestEnv(t)
+	_, deps, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	root := newTestRootCmd(registry)
+	root := newTestRootCmd(deps)
 	output, err := executeCommand(root, "status")
 	if err != nil {
 		t.Fatalf("status with no tasks should not error: %v", err)
@@ -147,10 +153,10 @@ func TestStatusCmd_NoTasks(t *testing.T) {
 }
 
 func TestRunCmd_HappyPath(t *testing.T) {
-	_, registry, cleanup := setupTestEnv(t)
+	_, deps, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	root := newTestRootCmd(registry)
+	root := newTestRootCmd(deps)
 	output, err := executeCommand(root, "run", "backend", "-n", "042", "Test task for CLI")
 	if err != nil {
 		t.Fatalf("run should not error: %v", err)
@@ -192,13 +198,13 @@ func TestRunCmd_HappyPath(t *testing.T) {
 }
 
 func TestRunCmd_WithFile(t *testing.T) {
-	_, registry, cleanup := setupTestEnv(t)
+	_, deps, cleanup := setupTestEnv(t)
 	defer cleanup()
 
 	tmpFile := filepath.Join(t.TempDir(), "task.md")
 	os.WriteFile(tmpFile, []byte("Fix the login bug"), 0o644)
 
-	root := newTestRootCmd(registry)
+	root := newTestRootCmd(deps)
 	output, err := executeCommand(root, "run", "backend", "-n", "043", "--file", tmpFile)
 	if err != nil {
 		t.Fatalf("run --file should not error: %v", err)
@@ -223,10 +229,10 @@ func TestRunCmd_WithFile(t *testing.T) {
 }
 
 func TestRunCmd_MissingDescription(t *testing.T) {
-	_, registry, cleanup := setupTestEnv(t)
+	_, deps, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	root := newTestRootCmd(registry)
+	root := newTestRootCmd(deps)
 	_, err := executeCommand(root, "run", "backend")
 	if err == nil {
 		t.Fatal("run without description should error")
@@ -234,10 +240,10 @@ func TestRunCmd_MissingDescription(t *testing.T) {
 }
 
 func TestRunCmd_PipelineNotFound(t *testing.T) {
-	_, registry, cleanup := setupTestEnv(t)
+	_, deps, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	root := newTestRootCmd(registry)
+	root := newTestRootCmd(deps)
 	_, err := executeCommand(root, "run", "nonexistent-pipeline", "desc")
 	if err == nil {
 		t.Fatal("run with nonexistent pipeline should error")
@@ -245,7 +251,7 @@ func TestRunCmd_PipelineNotFound(t *testing.T) {
 }
 
 func TestStatusCmd_WithTask(t *testing.T) {
-	_, registry, cleanup := setupTestEnv(t)
+	_, deps, cleanup := setupTestEnv(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -264,7 +270,7 @@ func TestStatusCmd_WithTask(t *testing.T) {
 	}
 	s.CreateTask(ctx, task)
 
-	root := newTestRootCmd(registry)
+	root := newTestRootCmd(deps)
 	output, err := executeCommand(root, "status", "test-task-123")
 	if err != nil {
 		t.Fatalf("status <task-id> should not error: %v", err)
@@ -279,10 +285,10 @@ func TestStatusCmd_WithTask(t *testing.T) {
 }
 
 func TestStatusCmd_TaskNotFound(t *testing.T) {
-	_, registry, cleanup := setupTestEnv(t)
+	_, deps, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	root := newTestRootCmd(registry)
+	root := newTestRootCmd(deps)
 	_, err := executeCommand(root, "status", "nonexistent")
 	if err == nil {
 		t.Fatal("status with nonexistent task should error")
@@ -290,7 +296,7 @@ func TestStatusCmd_TaskNotFound(t *testing.T) {
 }
 
 func TestApproveRejectRetry_Flow(t *testing.T) {
-	_, registry, cleanup := setupTestEnv(t)
+	_, deps, cleanup := setupTestEnv(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -299,8 +305,7 @@ func TestApproveRejectRetry_Flow(t *testing.T) {
 	defer s.Close()
 
 	pipeline, _ := domain.LoadBundledPipelineByName("backend")
-	a, _ := registry.Create("fake", cfg.AdapterConfig)
-	eng := engine.NewPipelineEngine(s, a, "")
+	eng := engine.NewPipelineEngineWithRegistry(s, deps.AgentRegistry, nil, domain.AdapterConfig{}, "", "")
 
 	// Create and run a task until human gate.
 	task := &domain.Task{
@@ -320,7 +325,7 @@ func TestApproveRejectRetry_Flow(t *testing.T) {
 	}
 
 	if task.Status == domain.StatusAwaitingGate {
-		root := newTestRootCmd(registry)
+		root := newTestRootCmd(deps)
 
 		output, err := executeCommand(root, "approve", "approve-test")
 		if err != nil {
@@ -333,7 +338,7 @@ func TestApproveRejectRetry_Flow(t *testing.T) {
 }
 
 func TestStatusJSON(t *testing.T) {
-	_, registry, cleanup := setupTestEnv(t)
+	_, deps, cleanup := setupTestEnv(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -352,7 +357,7 @@ func TestStatusJSON(t *testing.T) {
 	}
 	s.CreateTask(ctx, task)
 
-	root := newTestRootCmd(registry)
+	root := newTestRootCmd(deps)
 	output, err := executeCommand(root, "status", "--json")
 	if err != nil {
 		t.Fatalf("status --json should not error: %v", err)
@@ -371,10 +376,10 @@ func TestStatusJSON(t *testing.T) {
 }
 
 func TestRunCmd_JSONOutput(t *testing.T) {
-	_, registry, cleanup := setupTestEnv(t)
+	_, deps, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	root := newTestRootCmd(registry)
+	root := newTestRootCmd(deps)
 	output, err := executeCommand(root, "run", "backend", "-n", "044", "--json", "JSON test task")
 	if err != nil {
 		t.Fatalf("run --json should not error: %v", err)
@@ -466,12 +471,9 @@ func TestInitCmd(t *testing.T) {
 	os.Setenv("HOME", tmpDir)
 	defer os.Setenv("HOME", origHome)
 
-	registry := adapter.NewRegistry()
-	adapter.RegisterFake(registry)
+	root := newTestRootCmd(&Dependencies{Registry: adapter.NewRegistry()})
 
-	root := newTestRootCmd(registry)
-
-	input := "fake\n\n\n\n"
+	input := "claude_cli\n\n\n\n"
 	root.SetIn(strings.NewReader(input))
 	root.SetArgs([]string{"init"})
 
@@ -505,8 +507,8 @@ func TestInitCmd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	if cfg.Adapter != "fake" {
-		t.Errorf("expected adapter=fake, got %s", cfg.Adapter)
+	if cfg.Adapter != "claude_cli" {
+		t.Errorf("expected adapter=claude_cli, got %s", cfg.Adapter)
 	}
 	if cfg.AdapterConfig.ClaudeBinary != "claude" {
 		t.Errorf("expected claude binary=claude, got %s", cfg.AdapterConfig.ClaudeBinary)
@@ -517,10 +519,10 @@ func TestInitCmd(t *testing.T) {
 }
 
 func TestFullHappyPath(t *testing.T) {
-	_, registry, cleanup := setupTestEnv(t)
+	_, deps, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	root := newTestRootCmd(registry)
+	root := newTestRootCmd(deps)
 
 	// 1. Run a task
 	runOutput, err := executeCommand(root, "run", "backend", "-n", "045", "Full happy path test")
@@ -560,10 +562,7 @@ func TestFullHappyPath(t *testing.T) {
 }
 
 func TestBinaryBuilds(t *testing.T) {
-	registry := adapter.NewRegistry()
-	adapter.RegisterFake(registry)
-
-	root := NewRootCmd(&Dependencies{Registry: registry})
+	root := NewRootCmd(&Dependencies{Registry: adapter.NewRegistry()})
 	if root == nil {
 		t.Fatal("NewRootCmd should return a non-nil command")
 	}

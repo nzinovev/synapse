@@ -44,7 +44,7 @@ func defaultCursorModelTiers() map[string]string {
 
 func DefaultSynapseConfig() SynapseConfig {
 	return SynapseConfig{
-		Adapter: "fake",
+		Adapter: "claude_cli",
 		AdapterConfig: AdapterConfig{
 			ClaudeBinary: "claude",
 			AgentBinary:  "agent",

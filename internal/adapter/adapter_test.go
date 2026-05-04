@@ -1,27 +1,15 @@
 package adapter
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/nzinovev/synapse/internal/domain"
 )
 
-func TestAdapterRegistry(t *testing.T) {
+func TestAdapterRegistry_CreateUnknown(t *testing.T) {
 	registry := NewRegistry()
-	RegisterFake(registry)
-
-	adapter, err := registry.Create("fake", domain.AdapterConfig{})
-	if err != nil {
-		t.Fatalf("Create fake adapter: %v", err)
-	}
-	if adapter.Name() != "fake" {
-		t.Errorf("Name() = %q, want %q", adapter.Name(), "fake")
-	}
-
-	_, err = registry.Create("nonexistent", domain.AdapterConfig{})
+	_, err := registry.Create("nonexistent", domain.AdapterConfig{})
 	if err == nil {
 		t.Error("expected error for unknown adapter")
 	}
@@ -29,8 +17,8 @@ func TestAdapterRegistry(t *testing.T) {
 
 func TestRegistryNames(t *testing.T) {
 	registry := NewRegistry()
-	RegisterFake(registry)
-	RegisterClaudeCLI(registry)
+	registry.Register("alpha", func(cfg domain.AdapterConfig) (AgentAdapter, error) { return nil, nil })
+	registry.Register("beta", func(cfg domain.AdapterConfig) (AgentAdapter, error) { return nil, nil })
 
 	names := registry.Names()
 	if len(names) != 2 {
@@ -38,145 +26,26 @@ func TestRegistryNames(t *testing.T) {
 	}
 }
 
-func TestFakeAdapterSuccess(t *testing.T) {
-	fake := &FakeAdapter{}
-	result, err := fake.Invoke(t.Context(), domain.InvokeParams{
-		AgentName:       "spec-writer",
-		TaskDescription: "Add logging to engine",
-		WorkingDir:      t.TempDir(),
-		StageWorkdir:    t.TempDir(),
-	})
-	if err != nil {
-		t.Fatalf("Invoke: %v", err)
-	}
+func TestSelectableNames(t *testing.T) {
+	r := NewRegistry()
+	r.Register("claude_cli", func(cfg domain.AdapterConfig) (AgentAdapter, error) { return nil, nil })
+	r.Register("cursor_cli", func(cfg domain.AdapterConfig) (AgentAdapter, error) { return nil, nil })
 
-	if !result.Success {
-		t.Error("result.Success = false, want true")
-	}
-	if result.ExitCode == nil || *result.ExitCode != 0 {
-		t.Errorf("ExitCode = %v, want 0", result.ExitCode)
-	}
-	if len(result.ArtifactsCreated) != 1 {
-		t.Fatalf("len(ArtifactsCreated) = %d, want 1", len(result.ArtifactsCreated))
-	}
-	if !strings.Contains(result.ArtifactsCreated[0], "docs/specs/") {
-		t.Errorf("artifact path = %q, want docs/specs/...", result.ArtifactsCreated[0])
-	}
-	if !strings.Contains(result.Stdout, "SYNAPSE_AGENT_DONE:") {
-		t.Error("stdout missing SYNAPSE_AGENT_DONE sentinel")
+	names := r.SelectableNames()
+	if len(names) != 2 {
+		t.Errorf("SelectableNames() = %v, want 2 entries", names)
 	}
 }
 
-func TestFakeAdapterFailure(t *testing.T) {
-	fake := &FakeAdapter{ShouldFail: true}
-	result, err := fake.Invoke(t.Context(), domain.InvokeParams{
-		AgentName:       "spec-writer",
-		TaskDescription: "test task",
-		WorkingDir:      t.TempDir(),
-		StageWorkdir:    t.TempDir(),
-	})
-	if err != nil {
-		t.Fatalf("Invoke: %v", err)
-	}
-	if result.Success {
-		t.Error("result.Success = true, want false")
-	}
-	if result.ExitCode == nil || *result.ExitCode != 1 {
-		t.Errorf("ExitCode = %v, want 1", result.ExitCode)
-	}
-}
+func TestHas(t *testing.T) {
+	r := NewRegistry()
+	r.Register("claude_cli", func(cfg domain.AdapterConfig) (AgentAdapter, error) { return nil, nil })
 
-func TestFakeAdapterAllAgents(t *testing.T) {
-	agents := []string{"spec-writer", "adr-architect", "ui-designer", "feature-implementer", "fix-implementer", "spec-reviewer"}
-	for _, agent := range agents {
-		t.Run(agent, func(t *testing.T) {
-			fake := &FakeAdapter{}
-			result, err := fake.Invoke(t.Context(), domain.InvokeParams{
-				AgentName:       agent,
-				TaskDescription: "test " + agent,
-				WorkingDir:      t.TempDir(),
-				StageWorkdir:    t.TempDir(),
-			})
-			if err != nil {
-				t.Fatalf("Invoke(%s): %v", agent, err)
-			}
-			if !result.Success {
-				t.Errorf("%s: Success = false", agent)
-			}
-		})
+	if !r.Has("claude_cli") {
+		t.Error("Has(claude_cli) should be true")
 	}
-}
-
-func TestFakeAdapterUnknownAgent(t *testing.T) {
-	fake := &FakeAdapter{}
-	result, err := fake.Invoke(t.Context(), domain.InvokeParams{
-		AgentName:       "custom-agent",
-		TaskDescription: "test task",
-		WorkingDir:      t.TempDir(),
-		StageWorkdir:    t.TempDir(),
-	})
-	if err != nil {
-		t.Fatalf("Invoke: %v", err)
-	}
-	if !result.Success {
-		t.Error("expected success for unknown agent")
-	}
-	if len(result.ArtifactsCreated) != 0 {
-		t.Errorf("expected no artifacts for unknown agent, got %d", len(result.ArtifactsCreated))
-	}
-}
-
-func TestFakeAdapterPromptsDirCheck(t *testing.T) {
-	promptsDir := t.TempDir()
-	fake := &FakeAdapter{AgentPromptsDir: promptsDir}
-	_, err := fake.Invoke(t.Context(), domain.InvokeParams{
-		AgentName:       "spec-writer",
-		TaskDescription: "test task",
-		WorkingDir:      t.TempDir(),
-		StageWorkdir:    t.TempDir(),
-	})
-	if err == nil {
-		t.Error("expected error when prompt file is missing")
-	}
-}
-
-func TestFakeAdapterPromptsDirExists(t *testing.T) {
-	promptsDir := t.TempDir()
-	fake := &FakeAdapter{AgentPromptsDir: promptsDir}
-
-	// Create the prompt file.
-	writeFile(t, promptsDir+"/spec-writer.md", "# Spec writer prompt")
-
-	result, err := fake.Invoke(t.Context(), domain.InvokeParams{
-		AgentName:       "spec-writer",
-		TaskDescription: "test task",
-		WorkingDir:      t.TempDir(),
-		StageWorkdir:    t.TempDir(),
-	})
-	if err != nil {
-		t.Fatalf("Invoke: %v", err)
-	}
-	if !result.Success {
-		t.Error("expected success")
-	}
-}
-
-func TestSlugify(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"Add logging to engine", "add-logging-to-engine"},
-		{"Hello World! @#$%", "hello-world"},
-		{"a", "a"},
-		{strings.Repeat("x", 100), strings.Repeat("x", 50)},
-		{"  spaces  ", "spaces"},
-	}
-	for _, tt := range tests {
-		got := slugify(tt.input)
-		if got != tt.want {
-			t.Errorf("slugify(%q) = %q, want %q", tt.input, got, tt.want)
-		}
+	if r.Has("nonexistent") {
+		t.Error("Has(nonexistent) should be false")
 	}
 }
 
@@ -321,45 +190,5 @@ func TestFormatRoutingBlockUnknownStage(t *testing.T) {
 	block := FormatRoutingBlock("custom", domain.GateAuto, "custom-agent", "backend", 0, 1)
 	if !strings.Contains(block, "Custom stage `custom`") {
 		t.Error("missing custom stage text")
-	}
-}
-
-func writeFile(t *testing.T, path, content string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write file %s: %v", path, err)
-	}
-}
-
-func TestSelectableNamesExcludesFake(t *testing.T) {
-	r := NewRegistry()
-	RegisterFake(r)
-	r.Register("claude_cli", func(cfg domain.AdapterConfig) (AgentAdapter, error) {
-		return &FakeAdapter{}, nil
-	})
-
-	names := r.SelectableNames()
-	for _, n := range names {
-		if n == "fake" {
-			t.Error("SelectableNames should not include fake")
-		}
-	}
-	if len(names) != 1 || names[0] != "claude_cli" {
-		t.Errorf("SelectableNames = %v, want [claude_cli]", names)
-	}
-}
-
-func TestHas(t *testing.T) {
-	r := NewRegistry()
-	RegisterFake(r)
-
-	if !r.Has("fake") {
-		t.Error("Has(fake) should be true")
-	}
-	if r.Has("nonexistent") {
-		t.Error("Has(nonexistent) should be false")
 	}
 }

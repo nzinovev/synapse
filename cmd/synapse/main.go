@@ -14,7 +14,6 @@ var version = "dev"
 
 func main() {
 	registry := adapter.NewRegistry()
-	adapter.RegisterFake(registry)
 	adapter.RegisterClaudeCLI(registry)
 	adapter.RegisterCursorCLI(registry)
 

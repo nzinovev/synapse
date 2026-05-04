@@ -20,6 +20,7 @@ type SynapseConfig struct {
 	Adapter       string        `json:"adapter"`
 	AdapterConfig AdapterConfig `json:"adapter_config"`
 	PipelinesDir  string        `json:"pipelines_dir"`
+	AgentDir      string        `json:"agent_dir"`
 	DBPath        string        `json:"db_path"`
 	WorkerCount   int           `json:"worker_count"`
 	Host          string        `json:"host"`

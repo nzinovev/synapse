@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nzinovev/synapse/internal/adapter"
+	"github.com/nzinovev/synapse/internal/agent"
 	"github.com/nzinovev/synapse/internal/domain"
 	"github.com/nzinovev/synapse/internal/engine"
 	"github.com/nzinovev/synapse/internal/queue"
@@ -31,13 +31,6 @@ func setupWebTest(t *testing.T) (*Server, string) {
 		t.Fatalf("open store: %v", err)
 	}
 	t.Cleanup(func() { s.Close() })
-
-	reg := adapter.NewRegistry()
-	adapter.RegisterFake(reg)
-	a, err := reg.Create("fake", domain.AdapterConfig{})
-	if err != nil {
-		t.Fatalf("create adapter: %v", err)
-	}
 
 	// Create a pipelines dir with backend.yaml
 	pipelinesDir := filepath.Join(tmpDir, "pipelines")
@@ -58,7 +51,15 @@ stages:
 `
 	os.WriteFile(filepath.Join(pipelinesDir, "backend.yaml"), []byte(pipelineYAML), 0o644)
 
-	eng := engine.NewPipelineEngine(s, a, pipelinesDir)
+	agentReg := agent.NewAgentRegistry()
+	agentReg.Register("spec-writer", func(cfg domain.AdapterConfig) (agent.Agent, error) {
+		return &agent.MockAgent{}, nil
+	})
+	agentReg.Register("adr-architect", func(cfg domain.AdapterConfig) (agent.Agent, error) {
+		return &agent.MockAgent{}, nil
+	})
+
+	eng := engine.NewPipelineEngineWithRegistry(s, agentReg, nil, domain.AdapterConfig{}, "", pipelinesDir)
 	q := queue.NewSQLiteQueueStore(s.DB())
 
 	cfg := &domain.SynapseConfig{

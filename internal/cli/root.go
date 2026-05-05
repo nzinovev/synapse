@@ -65,9 +65,6 @@ func createEngine(ctx context.Context, cfg *domain.SynapseConfig, s *store.SQLit
 }
 
 func validateAdapterName(deps *Dependencies, adapterName string) error {
-	if adapterName == "fake" {
-		return fmt.Errorf("the fake adapter is not available for user selection")
-	}
 	if !deps.Registry.Has(adapterName) {
 		return fmt.Errorf("unknown adapter %q; available: %v", adapterName, deps.Registry.SelectableNames())
 	}

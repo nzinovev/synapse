@@ -506,11 +506,6 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if adapterName == "fake" {
-		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprintf(w, `<span class="form-error">The fake adapter is not available for user selection.</span>`)
-		return
-	}
 	if adapterName != "" {
 		valid := false
 		for _, n := range s.adapterNames {

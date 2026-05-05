@@ -37,6 +37,7 @@ func NewRootCmd(deps *Dependencies) *cobra.Command {
 		newCancelCmd(deps),
 		newListPipelinesCmd(deps),
 		newShowPipelineCmd(deps),
+		newListAgentsCmd(),
 		newWebCmd(deps),
 		newMigrateCmd(),
 	)
@@ -61,13 +62,10 @@ func openStore(ctx context.Context, cfg *domain.SynapseConfig) (*store.SQLiteSto
 }
 
 func createEngine(ctx context.Context, cfg *domain.SynapseConfig, s *store.SQLiteStore, deps *Dependencies) (*engine.PipelineEngine, error) {
-	return engine.NewPipelineEngineWithRegistry(s, deps.Registry, cfg.AdapterConfig, cfg.Adapter, cfg.PipelinesDir), nil
+	return engine.NewPipelineEngineWithRegistry(s, deps.AgentRegistry, deps.Registry, cfg.AdapterConfig, cfg.Adapter, cfg.PipelinesDir), nil
 }
 
 func validateAdapterName(deps *Dependencies, adapterName string) error {
-	if adapterName == "fake" {
-		return fmt.Errorf("the fake adapter is not available for user selection")
-	}
 	if !deps.Registry.Has(adapterName) {
 		return fmt.Errorf("unknown adapter %q; available: %v", adapterName, deps.Registry.SelectableNames())
 	}

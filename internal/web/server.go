@@ -113,7 +113,7 @@ func NewServerFromConfig(cfg *domain.SynapseConfig, registry *adapter.AdapterReg
 		return nil, fmt.Errorf("open store: %w", err)
 	}
 
-	eng := engine.NewPipelineEngineWithRegistry(s, registry, cfg.AdapterConfig, cfg.Adapter, cfg.PipelinesDir)
+	eng := engine.NewPipelineEngineWithRegistry(s, nil, registry, cfg.AdapterConfig, cfg.Adapter, cfg.PipelinesDir)
 	q := queue.NewSQLiteQueueStore(s.DB())
 
 	adapterNames := registry.SelectableNames()

@@ -45,9 +45,6 @@ func (r *AdapterRegistry) Names() []string {
 func (r *AdapterRegistry) SelectableNames() []string {
 	names := make([]string, 0, len(r.factories))
 	for k := range r.factories {
-		if k == "fake" {
-			continue
-		}
 		names = append(names, k)
 	}
 	return names

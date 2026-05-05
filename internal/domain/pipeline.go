@@ -36,6 +36,7 @@ type Stage struct {
 	Gate         Gate   `yaml:"gate"`
 	ProducesGlob string `yaml:"produces_glob"`
 	Model        string `yaml:"model"`
+	Runtime      string `yaml:"runtime"` // "cli" | "native"; defaults to "cli" when empty
 }
 
 type Pipeline struct {

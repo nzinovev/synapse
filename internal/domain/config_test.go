@@ -9,8 +9,8 @@ import (
 
 func TestDefaultSynapseConfig(t *testing.T) {
 	cfg := DefaultSynapseConfig()
-	if cfg.Adapter != "fake" {
-		t.Errorf("Adapter = %q, want fake", cfg.Adapter)
+	if cfg.Adapter != "claude_cli" {
+		t.Errorf("Adapter = %q, want claude_cli", cfg.Adapter)
 	}
 	if cfg.WorkerCount != 2 {
 		t.Errorf("WorkerCount = %d, want 2", cfg.WorkerCount)
@@ -68,7 +68,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 	synapseDir := filepath.Join(dir, ".synapse")
 
 	cfg := DefaultSynapseConfig()
-	cfg.Adapter = "fake"
+	cfg.Adapter = "claude_cli"
 	cfg.PipelinesDir = "/tmp/pipes"
 
 	if err := cfg.Save(synapseDir); err != nil {
@@ -79,8 +79,8 @@ func TestSaveAndLoadConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if loaded.Adapter != "fake" {
-		t.Errorf("Adapter = %q, want fake", loaded.Adapter)
+	if loaded.Adapter != "claude_cli" {
+		t.Errorf("Adapter = %q, want claude_cli", loaded.Adapter)
 	}
 	if loaded.PipelinesDir != "/tmp/pipes" {
 		t.Errorf("PipelinesDir = %q, want /tmp/pipes", loaded.PipelinesDir)
@@ -132,7 +132,7 @@ func TestAdapterConfigDefaults(t *testing.T) {
 
 	// Config with only required fields
 	configData := map[string]any{
-		"adapter":        "fake",
+		"adapter":        "claude_cli",
 		"adapter_config": map[string]any{},
 		"pipelines_dir":  "/tmp/p",
 	}

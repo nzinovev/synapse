@@ -601,11 +601,12 @@ func (e *PipelineEngine) runLoop(ctx context.Context, task *domain.Task) (*domai
 			input.Feedback = &agent.FeedbackDetail{Kind: "answers", Text: *openQuestionAnswers}
 		}
 
+		// Write durable input snapshot before invocation.
+		agent.WriteStageInput(stageWorkdir, input)
+
 		// Invoke agent (or use null result for done/null stages).
 		var runResult agent.RunResult
 		if stage.Agent == "" || stage.Agent == "null" {
-			exitCode := 0
-			_ = exitCode
 			runResult = agent.RunResult{
 				SchemaVersion: agent.SchemaVersion,
 				Status:        agent.StatusCompleted,
@@ -635,6 +636,9 @@ func (e *PipelineEngine) runLoop(ctx context.Context, task *domain.Task) (*domai
 			}
 		}
 
+		// Write durable logs.
+		agent.WriteStageLogs(stageWorkdir, runResult.Stdout, runResult.Stderr)
+
 		// Resolve new artifacts via glob diff.
 		var newArtifacts []string
 		if stage.ProducesGlob != "" {
@@ -649,6 +653,14 @@ func (e *PipelineEngine) runLoop(ctx context.Context, task *domain.Task) (*domai
 				newArtifacts = append(newArtifacts, abs)
 			}
 		}
+
+		// Write durable artifact list and result.
+		artifactRefs := make([]agent.ArtifactRef, 0, len(newArtifacts))
+		for _, p := range newArtifacts {
+			artifactRefs = append(artifactRefs, agent.ArtifactRef{Path: p, StageID: stage.ID})
+		}
+		agent.WriteStageArtifacts(stageWorkdir, artifactRefs)
+		agent.WriteStageResult(stageWorkdir, runResult)
 
 		// Map RunResult back to domain.AgentResult for backward compat storage.
 		exitCode := 0

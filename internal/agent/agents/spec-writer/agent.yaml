@@ -1,0 +1,6 @@
+name: spec-writer
+version: "1.0"
+description: "Analyzes task descriptions and produces structured specification files."
+runtime: cli
+model_tier: low
+prompt: prompt.md

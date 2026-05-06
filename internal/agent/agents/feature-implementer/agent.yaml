@@ -1,0 +1,6 @@
+name: feature-implementer
+version: "1.0"
+description: "Implements features with surgical precision based on confirmed ADRs and specs."
+runtime: cli
+model_tier: medium
+prompt: prompt.md

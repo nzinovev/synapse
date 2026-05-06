@@ -815,6 +815,12 @@ func (e *PipelineEngine) resolveAndRunAgent(
 		}
 	}
 
+	// Populate SystemPrompt for bundled agents so CLI adapters can use inline content.
+	var inlinePrompt string
+	if def, defErr := agent.LoadAgent(stage.Agent, e.synapseConfig); defErr == nil && def.Source == "bundled" {
+		inlinePrompt = def.Prompt
+	}
+
 	r, err := resolvedAdapter.Invoke(ctx, domain.InvokeParams{
 		AgentName:           stage.Agent,
 		TaskDescription:     input.Goal,
@@ -831,6 +837,7 @@ func (e *PipelineEngine) resolveAndRunAgent(
 		PreviousStdout:      input.PreviousStdout,
 		PreviousStderr:      input.PreviousStderr,
 		Model:               input.Model,
+		SystemPrompt:        inlinePrompt,
 	})
 	if err != nil {
 		return agent.RunResult{}, err

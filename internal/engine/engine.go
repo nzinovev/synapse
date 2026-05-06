@@ -13,15 +13,23 @@ import (
 	"github.com/nzinovev/synapse/internal/agent"
 	"github.com/nzinovev/synapse/internal/domain"
 	"github.com/nzinovev/synapse/internal/store"
+	"github.com/nzinovev/synapse/internal/tool"
 )
 
 const MaxFixCycles = 3
+
+// NativeFactory is a function that constructs a native agent for a given
+// AgentDefinition and ToolPermission. If nil, the engine falls back to the
+// AgentRegistry path when stage.Runtime == "native".
+type NativeFactory func(def agent.AgentDefinition, perm tool.ToolPermission) (agent.Agent, error)
 
 type PipelineEngine struct {
 	store          store.TaskStore
 	adapter        adapter.AgentAdapter // legacy: single fixed adapter
 	registry       *adapter.AdapterRegistry
 	agentRegistry  *agent.AgentRegistry
+	nativeFactory  NativeFactory
+	synapseConfig  domain.SynapseConfig
 	adapterConfig  domain.AdapterConfig
 	defaultAdapter string
 	pipelinesDir   string
@@ -63,6 +71,20 @@ func NewPipelineEngineWithRegistry(
 		defaultAdapter: defaultAdapter,
 		pipelinesDir:   pipelinesDir,
 	}
+}
+
+// SetNativeFactory registers a NativeFactory on the engine. When set, any
+// stage with Runtime == "native" is dispatched through this factory instead of
+// the AgentRegistry. If not set, the engine falls back to AgentRegistry for
+// native stages.
+func (e *PipelineEngine) SetNativeFactory(f NativeFactory) {
+	e.nativeFactory = f
+}
+
+// SetSynapseConfig stores the full SynapseConfig so the engine can load
+// AgentDefinitions for native stages.
+func (e *PipelineEngine) SetSynapseConfig(cfg domain.SynapseConfig) {
+	e.synapseConfig = cfg
 }
 
 func (e *PipelineEngine) resolveAdapter(task *domain.Task) (adapter.AgentAdapter, string, error) {
@@ -710,10 +732,13 @@ func (e *PipelineEngine) runLoop(ctx context.Context, task *domain.Task) (*domai
 	}
 }
 
-// resolveAndRunAgent runs the agent for a stage. If the agentRegistry has a
-// factory for the stage's agent name, it uses that; otherwise it falls back to
-// the adapter registry. After running, it attempts to read a result.json file
-// written by the agent and merges it into the result.
+// resolveAndRunAgent runs the agent for a stage. Routing priority:
+//  1. stage.Runtime == "native" + nativeFactory set → NativeFactory path
+//  2. agentRegistry has stage.Agent → AgentRegistry path
+//  3. adapter fallback
+//
+// After running, it attempts to read a result.json written by the agent and
+// merges it into the result.
 func (e *PipelineEngine) resolveAndRunAgent(
 	ctx context.Context,
 	task *domain.Task,
@@ -721,6 +746,28 @@ func (e *PipelineEngine) resolveAndRunAgent(
 	input agent.RunInput,
 	stageWorkdir string,
 ) (agent.RunResult, error) {
+	// Native runtime path — use NativeFactory when the stage opts in.
+	if stage.Runtime == "native" && e.nativeFactory != nil {
+		def, err := agent.LoadAgent(stage.Agent, e.synapseConfig)
+		if err != nil {
+			return agent.RunResult{}, fmt.Errorf("load agent definition %q: %w", stage.Agent, err)
+		}
+		perm := tool.ToolPermission{
+			AllowWrites:  true,
+			AllowShell:   false,
+			WorkspaceDir: task.WorkingDir,
+		}
+		a, err := e.nativeFactory(def, perm)
+		if err != nil {
+			return agent.RunResult{}, fmt.Errorf("create native agent %q: %w", stage.Agent, err)
+		}
+		result, err := a.Run(ctx, input)
+		if err != nil {
+			return agent.RunResult{}, err
+		}
+		return e.mergeFileResult(result, stageWorkdir), nil
+	}
+
 	// Agent registry path.
 	if e.agentRegistry != nil && e.agentRegistry.Has(stage.Agent) {
 		a, err := e.agentRegistry.Create(stage.Agent, e.adapterConfig)
@@ -733,21 +780,7 @@ func (e *PipelineEngine) resolveAndRunAgent(
 			return agent.RunResult{}, err
 		}
 
-		// Merge result.json if the agent wrote one.
-		if fileResult, ferr := agent.ReadStageResult(stageWorkdir); ferr == nil && fileResult != nil {
-			if fileResult.Verdict != "" {
-				result.Verdict = fileResult.Verdict
-			}
-			if len(fileResult.OpenQuestions) > 0 {
-				result.OpenQuestions = fileResult.OpenQuestions
-			}
-			if result.Metadata == nil {
-				result.Metadata = make(map[string]string)
-			}
-			result.Metadata["result_json_present"] = "true"
-		}
-
-		return result, nil
+		return e.mergeFileResult(result, stageWorkdir), nil
 	}
 
 	// Adapter fallback path.
@@ -815,6 +848,26 @@ func (e *PipelineEngine) resolveAndRunAgent(
 		Stderr:          r.Stderr,
 		DurationSeconds: r.DurationSeconds,
 	}, nil
+}
+
+// mergeFileResult reads result.json from stageWorkdir (if present) and merges
+// its Verdict, OpenQuestions, and result_json_present metadata into result.
+func (e *PipelineEngine) mergeFileResult(result agent.RunResult, stageWorkdir string) agent.RunResult {
+	fileResult, ferr := agent.ReadStageResult(stageWorkdir)
+	if ferr != nil || fileResult == nil {
+		return result
+	}
+	if fileResult.Verdict != "" {
+		result.Verdict = fileResult.Verdict
+	}
+	if len(fileResult.OpenQuestions) > 0 {
+		result.OpenQuestions = fileResult.OpenQuestions
+	}
+	if result.Metadata == nil {
+		result.Metadata = make(map[string]string)
+	}
+	result.Metadata["result_json_present"] = "true"
+	return result
 }
 
 func (e *PipelineEngine) parseReviewerVerdict(stageID string, task *domain.Task) string {

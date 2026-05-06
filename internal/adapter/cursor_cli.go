@@ -19,10 +19,16 @@ func (c *CursorCliAdapter) Name() string {
 }
 
 func (c *CursorCliAdapter) Invoke(ctx context.Context, params domain.InvokeParams) (domain.AgentResult, error) {
-	promptFile := c.AgentPromptsDir + "/" + params.AgentName + ".md"
-	systemPrompt, err := os.ReadFile(promptFile)
-	if err != nil {
-		return domain.AgentResult{}, fmt.Errorf("read agent prompt file: %w", err)
+	var systemPrompt []byte
+	if params.SystemPrompt != "" {
+		systemPrompt = []byte(params.SystemPrompt)
+	} else {
+		promptFile := c.AgentPromptsDir + "/" + params.AgentName + ".md"
+		var err error
+		systemPrompt, err = os.ReadFile(promptFile)
+		if err != nil {
+			return domain.AgentResult{}, fmt.Errorf("read agent prompt file: %w", err)
+		}
 	}
 
 	taskBody := BuildTaskPrompt(

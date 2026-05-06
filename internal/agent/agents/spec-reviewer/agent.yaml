@@ -1,0 +1,6 @@
+name: spec-reviewer
+version: "1.0"
+description: "Verifies feature implementations against specs and ADRs; read-only."
+runtime: cli
+model_tier: low
+prompt: prompt.md

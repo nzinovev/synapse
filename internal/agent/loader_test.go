@@ -238,31 +238,56 @@ runtime: native
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(agents) != 3 {
-		t.Fatalf("expected 3 agents, got %d", len(agents))
+	// 6 bundled + alpha (user), beta (legacy), gamma (user) — none collide with bundled names.
+	if len(agents) != 9 {
+		t.Fatalf("expected 9 agents, got %d: %v", len(agents), namesOf(agents))
 	}
 
-	// Should be sorted alphabetically: alpha, beta, gamma.
-	if agents[0].Name != "alpha" || agents[1].Name != "beta" || agents[2].Name != "gamma" {
-		t.Errorf("expected [alpha, beta, gamma], got %v", namesOf(agents))
+	// Result must be sorted alphabetically.
+	for i := 1; i < len(agents); i++ {
+		if agents[i].Name < agents[i-1].Name {
+			t.Errorf("agents not sorted at index %d: %q before %q", i, agents[i-1].Name, agents[i].Name)
+		}
+	}
+
+	// Find agents by name to avoid brittle index assertions.
+	findByName := func(name string) *agent.AgentDefinition {
+		for i := range agents {
+			if agents[i].Name == name {
+				return &agents[i]
+			}
+		}
+		return nil
 	}
 
 	// "alpha" should be the user override, not legacy.
-	if agents[0].Source != "user" {
-		t.Errorf("expected alpha source %q, got %q", "user", agents[0].Source)
+	alpha := findByName("alpha")
+	if alpha == nil {
+		t.Fatal("alpha not found")
 	}
-	if agents[0].Runtime != "native" {
-		t.Errorf("expected alpha runtime %q, got %q", "native", agents[0].Runtime)
+	if alpha.Source != "user" {
+		t.Errorf("expected alpha source %q, got %q", "user", alpha.Source)
+	}
+	if alpha.Runtime != "native" {
+		t.Errorf("expected alpha runtime %q, got %q", "native", alpha.Runtime)
 	}
 
 	// "beta" should be legacy.
-	if agents[1].Source != "legacy" {
-		t.Errorf("expected beta source %q, got %q", "legacy", agents[1].Source)
+	beta := findByName("beta")
+	if beta == nil {
+		t.Fatal("beta not found")
+	}
+	if beta.Source != "legacy" {
+		t.Errorf("expected beta source %q, got %q", "legacy", beta.Source)
 	}
 
 	// "gamma" should be user.
-	if agents[2].Source != "user" {
-		t.Errorf("expected gamma source %q, got %q", "user", agents[2].Source)
+	gamma := findByName("gamma")
+	if gamma == nil {
+		t.Fatal("gamma not found")
+	}
+	if gamma.Source != "user" {
+		t.Errorf("expected gamma source %q, got %q", "user", gamma.Source)
 	}
 }
 
@@ -280,8 +305,9 @@ func TestListAgents_EmptyDirs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(agents) != 0 {
-		t.Errorf("expected 0 agents, got %d", len(agents))
+	// Only the 6 bundled agents should be present when configured dirs are empty.
+	if len(agents) != 6 {
+		t.Errorf("expected 6 bundled agents, got %d", len(agents))
 	}
 }
 
@@ -292,8 +318,9 @@ func TestListAgents_NoDirsConfigured(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(agents) != 0 {
-		t.Errorf("expected 0 agents, got %d", len(agents))
+	// Only the 6 bundled agents should be present when no dirs are configured.
+	if len(agents) != 6 {
+		t.Errorf("expected 6 bundled agents, got %d", len(agents))
 	}
 }
 
@@ -326,6 +353,95 @@ prompt: subdir/prompt.md
 	if def.Prompt != expected {
 		t.Errorf("expected prompt %q, got %q", expected, def.Prompt)
 	}
+}
+
+func TestLoadAgent_BundledFallback(t *testing.T) {
+	// No AgentDir, no AgentPromptsDir — only bundled agents are available.
+	cfg := domain.SynapseConfig{}
+
+	def, err := agent.LoadAgent("spec-writer", cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if def.Source != "bundled" {
+		t.Errorf("expected source %q, got %q", "bundled", def.Source)
+	}
+	if def.Prompt == "" {
+		t.Error("expected non-empty inline prompt")
+	}
+	// Prompt must be inline text, not a file path.
+	if len(def.Prompt) < 10 || def.Prompt[0] == '/' {
+		t.Errorf("Prompt looks like a file path or is too short: %q", def.Prompt[:min(40, len(def.Prompt))])
+	}
+	// Frontmatter must be stripped.
+	if len(def.Prompt) >= 3 && def.Prompt[:3] == "---" {
+		t.Error("Prompt starts with '---': frontmatter was not stripped")
+	}
+}
+
+func TestListAgents_IncludesBundled(t *testing.T) {
+	cfg := domain.SynapseConfig{}
+
+	agents, err := agent.ListAgents(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(agents) != 6 {
+		t.Fatalf("expected 6 bundled agents, got %d: %v", len(agents), namesOf(agents))
+	}
+	for _, a := range agents {
+		if a.Source != "bundled" {
+			t.Errorf("expected source %q for %q, got %q", "bundled", a.Name, a.Source)
+		}
+	}
+	// Must be sorted alphabetically.
+	for i := 1; i < len(agents); i++ {
+		if agents[i].Name < agents[i-1].Name {
+			t.Errorf("agents not sorted at index %d: %q before %q", i, agents[i-1].Name, agents[i].Name)
+		}
+	}
+}
+
+func TestLoadAgent_UserShadowsBundled(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	userAgentDir := filepath.Join(tmpDir, "agents", "spec-writer")
+	if err := os.MkdirAll(userAgentDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	agentYAML := `
+name: spec-writer
+version: "1.0"
+description: "User override"
+runtime: cli
+model_tier: high
+prompt: prompt.md
+`
+	if err := os.WriteFile(filepath.Join(userAgentDir, "agent.yaml"), []byte(agentYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userAgentDir, "prompt.md"), []byte("user prompt"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := domain.SynapseConfig{
+		AgentDir: filepath.Join(tmpDir, "agents"),
+	}
+
+	def, err := agent.LoadAgent("spec-writer", cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if def.Source != "user" {
+		t.Errorf("expected source %q, got %q — bundled should not shadow user", "user", def.Source)
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func namesOf(agents []agent.AgentDefinition) []string {

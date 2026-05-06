@@ -17,4 +17,5 @@ type InvokeParams struct {
 	PreviousStdout      *string
 	PreviousStderr      *string
 	Model               string
+	SystemPrompt        string // inline prompt text; when non-empty, adapters use this instead of reading from disk
 }

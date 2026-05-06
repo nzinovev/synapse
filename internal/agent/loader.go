@@ -24,31 +24,47 @@ func LoadAgent(name string, cfg domain.SynapseConfig) (AgentDefinition, error) {
 		return def, nil
 	}
 
-	// T12: bundled agents will be checked here.
+	if def, err := loadFromBundledFS(name); err == nil {
+		return def, nil
+	}
 	return AgentDefinition{}, fmt.Errorf("agent %q not found", name)
 }
 
 // ListAgents scans all agent sources and returns the union, sorted by name.
-// User-defined agents override legacy agents with the same name.
+// Priority: user > legacy > bundled.
 func ListAgents(cfg domain.SynapseConfig) ([]AgentDefinition, error) {
 	seen := make(map[string]bool)
 	var result []AgentDefinition
 
-	// Collect legacy agents first.
+	// Collect bundled agents first (lowest priority).
+	for _, def := range listBundledAgents() {
+		if !seen[def.Name] {
+			seen[def.Name] = true
+			result = append(result, def)
+		}
+	}
+
+	// Collect legacy agents — replace bundled entry when names collide.
 	if legacy, err := listLegacyAgents(cfg); err == nil {
 		for _, def := range legacy {
-			if !seen[def.Name] {
+			if seen[def.Name] {
+				for i, existing := range result {
+					if existing.Name == def.Name {
+						result[i] = def
+						break
+					}
+				}
+			} else {
 				seen[def.Name] = true
 				result = append(result, def)
 			}
 		}
 	}
 
-	// Collect user-defined agents — these override legacy by name.
+	// Collect user-defined agents — replace bundled/legacy entry when names collide.
 	if user, err := listUserAgents(cfg); err == nil {
 		for _, def := range user {
 			if seen[def.Name] {
-				// Replace the legacy entry with the user one.
 				for i, existing := range result {
 					if existing.Name == def.Name {
 						result[i] = def
@@ -67,6 +83,57 @@ func ListAgents(cfg domain.SynapseConfig) ([]AgentDefinition, error) {
 	})
 
 	return result, nil
+}
+
+// loadFromBundledFS attempts to load an agent from the embedded agents FS.
+// The prompt field in agent.yaml is resolved to inline content.
+func loadFromBundledFS(name string) (AgentDefinition, error) {
+	yamlPath := "agents/" + name + "/agent.yaml"
+	data, err := BundledAgentsFS.ReadFile(yamlPath)
+	if err != nil {
+		return AgentDefinition{}, err
+	}
+
+	var def AgentDefinition
+	if err := yaml.Unmarshal(data, &def); err != nil {
+		return AgentDefinition{}, fmt.Errorf("parse bundled agent %s: %w", yamlPath, err)
+	}
+
+	def.Name = name
+	def.Source = "bundled"
+
+	if def.Prompt != "" {
+		promptPath := "agents/" + name + "/" + def.Prompt
+		promptData, err := BundledAgentsFS.ReadFile(promptPath)
+		if err != nil {
+			return AgentDefinition{}, fmt.Errorf("read bundled prompt %s: %w", promptPath, err)
+		}
+		def.Prompt = string(promptData)
+	}
+
+	return def, nil
+}
+
+// listBundledAgents returns all agents from the embedded agents FS.
+// Errors on individual entries are silently skipped.
+func listBundledAgents() []AgentDefinition {
+	entries, err := BundledAgentsFS.ReadDir("agents")
+	if err != nil {
+		return nil
+	}
+
+	var result []AgentDefinition
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		def, err := loadFromBundledFS(entry.Name())
+		if err != nil {
+			continue
+		}
+		result = append(result, def)
+	}
+	return result
 }
 
 // loadFromUserDir attempts to load <cfg.AgentDir>/<name>/agent.yaml.

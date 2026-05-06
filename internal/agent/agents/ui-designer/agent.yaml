@@ -1,0 +1,6 @@
+name: ui-designer
+version: "1.0"
+description: "Translates feature specs into precise UI specifications for frontend implementers."
+runtime: cli
+model_tier: medium
+prompt: prompt.md

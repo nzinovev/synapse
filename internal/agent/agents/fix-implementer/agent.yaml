@@ -1,0 +1,6 @@
+name: fix-implementer
+version: "1.0"
+description: "Remediates Critical and Major findings from spec-reviewer; exact scope only."
+runtime: cli
+model_tier: medium
+prompt: prompt.md

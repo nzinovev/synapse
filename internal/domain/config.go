@@ -26,6 +26,13 @@ type SynapseConfig struct {
 	Port          int           `json:"port"`
 }
 
+func ModelTiersForAdapter(adapterName string) map[string]string {
+	if adapterName == "cursor_cli" {
+		return defaultCursorModelTiers()
+	}
+	return defaultModelTiers()
+}
+
 func defaultModelTiers() map[string]string {
 	return map[string]string{
 		"low":    "haiku",
@@ -49,7 +56,6 @@ func DefaultSynapseConfig() SynapseConfig {
 			ClaudeBinary: "claude",
 			AgentBinary:  "agent",
 			CLIProfile:   "claude",
-			ModelTiers:   defaultModelTiers(),
 		},
 		DBPath:      defaultDBPath(),
 		WorkerCount: 2,
@@ -143,11 +149,7 @@ func applyDefaults(cfg *SynapseConfig) {
 		cfg.AdapterConfig.CLIProfile = "claude"
 	}
 	if cfg.AdapterConfig.ModelTiers == nil {
-		if cfg.Adapter == "cursor_cli" {
-			cfg.AdapterConfig.ModelTiers = defaultCursorModelTiers()
-		} else {
-			cfg.AdapterConfig.ModelTiers = defaultModelTiers()
-		}
+		cfg.AdapterConfig.ModelTiers = ModelTiersForAdapter(cfg.Adapter)
 	}
 }
 

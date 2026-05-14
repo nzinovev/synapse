@@ -68,6 +68,21 @@ Each stage has:
 current pipeline/stage/gate and per-stage instructions. This is how agents know their role and constraints without
 reading a separate file.
 
+### Stage Permissions
+
+Each stage may declare a `permissions:` block controlling what the native agent is
+allowed to do. CLI adapters are trusted and always skip post-stage enforcement.
+
+| Field | Type | Default (native) | Default (cli) | Description |
+|-------|------|-----------------|---------------|-------------|
+| `allow_writes` | bool | false | true | Permit filesystem writes |
+| `allow_shell` | bool | false | true | Permit shell execution |
+| `blocked_paths` | []string | [] | [] | Glob/prefix patterns always denied |
+| `max_changed_files` | int | 0 (unlimited) | 0 (unlimited) | Max files changed per stage run |
+
+Engine enforces `allow_writes`, `max_changed_files`, and `blocked_paths` via git-status
+diff for native agents. Tool-level enforcement (write_file, shell) runs inline.
+
 ### Config location
 
 - Global: `~/.synapse/config.json`

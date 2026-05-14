@@ -30,13 +30,49 @@ func (g Gate) Valid() bool {
 	return false
 }
 
+type StagePermissions struct {
+	AllowWrites     *bool    `yaml:"allow_writes"`
+	AllowShell      *bool    `yaml:"allow_shell"`
+	BlockedPaths    []string `yaml:"blocked_paths"`
+	MaxChangedFiles int      `yaml:"max_changed_files"`
+}
+
+func (p *StagePermissions) EffectiveAllowWrites(runtime string) bool {
+	if p != nil && p.AllowWrites != nil {
+		return *p.AllowWrites
+	}
+	return runtime != "native"
+}
+
+func (p *StagePermissions) EffectiveAllowShell(runtime string) bool {
+	if p != nil && p.AllowShell != nil {
+		return *p.AllowShell
+	}
+	return runtime != "native"
+}
+
+func (p *StagePermissions) EffectiveBlockedPaths() []string {
+	if p == nil {
+		return nil
+	}
+	return p.BlockedPaths
+}
+
+func (p *StagePermissions) EffectiveMaxChangedFiles() int {
+	if p == nil {
+		return 0
+	}
+	return p.MaxChangedFiles
+}
+
 type Stage struct {
-	ID           string `yaml:"id"`
-	Agent        string `yaml:"agent"`
-	Gate         Gate   `yaml:"gate"`
-	ProducesGlob string `yaml:"produces_glob"`
-	Model        string `yaml:"model"`
-	Runtime      string `yaml:"runtime"` // "cli" | "native"; defaults to "cli" when empty
+	ID           string             `yaml:"id"`
+	Agent        string             `yaml:"agent"`
+	Gate         Gate               `yaml:"gate"`
+	ProducesGlob string             `yaml:"produces_glob"`
+	Model        string             `yaml:"model"`
+	Runtime      string             `yaml:"runtime"` // "cli" | "native"; defaults to "cli" when empty
+	Permissions  *StagePermissions  `yaml:"permissions"`
 }
 
 type Pipeline struct {

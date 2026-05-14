@@ -644,6 +644,20 @@ func (e *PipelineEngine) runLoop(ctx context.Context, task *domain.Task) (*domai
 				e.clearCancelFunc(task.ID)
 			}()
 
+			var preGitSnapshot string
+			doPostCheck := false
+			if stage.Runtime == "native" {
+				needsCheck := !stage.Permissions.EffectiveAllowWrites("native") ||
+					stage.Permissions.EffectiveMaxChangedFiles() != 0 ||
+					len(stage.Permissions.EffectiveBlockedPaths()) > 0
+				if needsCheck {
+					if snap, err := snapshotGitStatus(task.WorkingDir); err == nil {
+						preGitSnapshot = snap
+						doPostCheck = true
+					}
+				}
+			}
+
 			rr, err := e.resolveAndRunAgent(invokeCtx, task, stage, input, stageWorkdir)
 			if err != nil {
 				if invokeCtx.Err() == context.Canceled {
@@ -655,6 +669,16 @@ func (e *PipelineEngine) runLoop(ctx context.Context, task *domain.Task) (*domai
 
 			if invokeCtx.Err() == context.Canceled {
 				return e.doCancel(ctx, task)
+			}
+
+			if doPostCheck && runResult.Status == agent.StatusCompleted {
+				if permErr := validatePostStageChanges(task.WorkingDir, preGitSnapshot, stage); permErr != nil {
+					runResult.Status = agent.StatusFailed
+					if runResult.Stderr != "" {
+						runResult.Stderr += "\n\n"
+					}
+					runResult.Stderr += permErr.Error()
+				}
 			}
 		}
 
@@ -753,8 +777,9 @@ func (e *PipelineEngine) resolveAndRunAgent(
 			return agent.RunResult{}, fmt.Errorf("load agent definition %q: %w", stage.Agent, err)
 		}
 		perm := tool.ToolPermission{
-			AllowWrites:  true,
-			AllowShell:   false,
+			AllowWrites:  stage.Permissions.EffectiveAllowWrites(stage.Runtime),
+			AllowShell:   stage.Permissions.EffectiveAllowShell(stage.Runtime),
+			BlockedPaths: stage.Permissions.EffectiveBlockedPaths(),
 			WorkspaceDir: task.WorkingDir,
 		}
 		a, err := e.nativeFactory(def, perm)
